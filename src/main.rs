@@ -219,6 +219,12 @@ fn main() {
                 let sb = get_symbol_bytes(&s, &rom_bytes, &config.endianness);
                 if sb.is_ok() {
                     let bytes = sb.unwrap();
+
+                    if query_bytes.insns == bytes.insns {
+                        println!("{} matches exactly", s.name);
+                        continue;
+                    }
+
                     let hashes = get_hashes(&bytes, args.window_size);
 
                     let pair_matches = get_pair_matches(&query_hashes, &hashes, args.window_size);
