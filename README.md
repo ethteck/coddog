@@ -1,6 +1,6 @@
 # coddog
 
-What is cod dog? cod dog is a dog that sniffs for cod. Dogs like cod, so, you know, it checks out.
+What is cod dog? cod dog is a dog that sniffs for cod.
 
 ### Configuration
 The configuration is as follows (named config.toml):
