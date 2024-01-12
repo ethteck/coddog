@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
-clap = { version = "4.4.12", features = ["derive"] }
+clap = { version = "4.4.16", features = ["derive"] }
 config = { version = "0.13.4", features = ["toml"] }
 glob = "0.3.1"
 mapfile_parser = "2.3.1"
