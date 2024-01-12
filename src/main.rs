@@ -85,7 +85,6 @@ fn get_unmatched_funcs(asm_dir: PathBuf) -> Result<Vec<String>> {
         // add filename minus extension to vec
         let s_file = s_file?;
         let s_file_stem = s_file.file_stem().unwrap().to_str().unwrap();
-        println!("s_file: {:?}", s_file_stem);
         unmatched_funcs.push(s_file_stem.to_string());
     }
     Ok(unmatched_funcs)
@@ -209,19 +208,25 @@ fn main() {
             }
 
             for s in &file.symbols {
-                if unmatched_funcs.contains(&s.name) {
-                    continue;
-                }
                 if s == &query_sym_info.symbol {
                     continue;
                 }
+
+                let decompiled_str = match unmatched_funcs.contains(&s.name) {
+                    true => "",
+                    false => " (decompiled)",
+                };
 
                 let sb = get_symbol_bytes(&s, &rom_bytes, &config.endianness);
                 if sb.is_ok() {
                     let bytes = sb.unwrap();
 
                     if query_bytes.insns == bytes.insns {
-                        println!("{} matches exactly", s.name);
+                        let match_pct = match query_bytes.raw == bytes.raw {
+                            true => "100%",
+                            false => "99%",
+                        };
+                        println!("{}{} matches {}", s.name, decompiled_str, match_pct);
                         continue;
                     }
 
@@ -233,7 +238,7 @@ fn main() {
                         continue;
                     }
 
-                    println!("{}:", s.name);
+                    println!("{}{}:", s.name, decompiled_str);
 
                     for m in pair_matches {
                         let query_str = format!("query [{}-{}]", m.offset1, m.offset1 + m.length);
