@@ -1,5 +1,6 @@
 use anyhow::{Ok, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
+use colored::*;
 use config::Config;
 use glob::glob;
 use mapfile_parser::{MapFile, Symbol};
@@ -8,7 +9,9 @@ use std::{
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
+use triple_accel::levenshtein::levenshtein;
 
+#[derive(Clone)]
 struct ConfigSettings {
     asm_dir: PathBuf,
     map_path: PathBuf,
@@ -17,34 +20,39 @@ struct ConfigSettings {
 }
 
 /// Find cod
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Args {
-    /// Name of the query function
-    query: String,
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+#[derive(Subcommand)]
+enum Commands {
+    Match {
+        /// Name of the query function
+        query: String,
 
-    /// Window size
-    window_size: usize,
-
-    /// min match length
-    min: Option<usize>,
-
-    /// max match length
-    max: Option<usize>,
+        /// Window size
+        window_size: usize,
+    },
+    Cross,
 }
 
+#[derive(Debug, Clone, Copy)]
 enum Endianness {
     Little,
     Big,
 }
+
 struct SymbolBytes {
-    #[allow(dead_code)]
+    // the raw bytes of the symbol
     raw: Vec<u8>,
+    // the symbol's instructions, normalized to essentially just opcodes
     insns: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Match {
+struct InsnMatch {
     offset1: usize,
     offset2: usize,
     length: usize,
@@ -78,7 +86,7 @@ fn load_config() -> ConfigSettings {
     }
 }
 
-fn get_unmatched_funcs(asm_dir: PathBuf) -> Result<Vec<String>> {
+fn get_unmatched_funcs(asm_dir: &PathBuf) -> Result<Vec<String>> {
     let mut unmatched_funcs = Vec::new();
 
     for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
@@ -138,25 +146,29 @@ fn get_hashes(bytes: &SymbolBytes, window_size: usize) -> Vec<u64> {
     ret
 }
 
-fn get_pair_matches(hashes_1: &Vec<u64>, hashes_2: &Vec<u64>, window_size: usize) -> Vec<Match> {
+fn get_pair_matches(
+    hashes_1: &Vec<u64>,
+    hashes_2: &Vec<u64>,
+    window_size: usize,
+) -> Vec<InsnMatch> {
     let mut matches = Vec::new();
 
     let matching_hashes = hashes_1
         .iter()
         .enumerate()
         .filter(|(_, h)| hashes_2.contains(h))
-        .map(|(i, h)| Match {
+        .map(|(i, h)| InsnMatch {
             offset1: i,
             offset2: hashes_2.iter().position(|x| x == h).unwrap(),
             length: 1,
         })
-        .collect::<Vec<Match>>();
+        .collect::<Vec<InsnMatch>>();
 
     if matching_hashes.len() == 0 {
         return matches;
     }
 
-    let mut match_groups: Vec<Vec<Match>> = Vec::new();
+    let mut match_groups: Vec<Vec<InsnMatch>> = Vec::new();
     let mut cur_pos = matching_hashes[0].offset1;
     for mh in matching_hashes {
         if mh.offset1 == cur_pos + 1 {
@@ -168,7 +180,7 @@ fn get_pair_matches(hashes_1: &Vec<u64>, hashes_2: &Vec<u64>, window_size: usize
     }
 
     for group in match_groups {
-        matches.push(Match {
+        matches.push(InsnMatch {
             offset1: group[0].offset1,
             offset2: group[0].offset2,
             length: group.len() + window_size,
@@ -178,20 +190,16 @@ fn get_pair_matches(hashes_1: &Vec<u64>, hashes_2: &Vec<u64>, window_size: usize
     matches
 }
 
-fn main() {
-    let config = load_config();
-
-    let args = Args::parse();
-
-    let rom_bytes = std::fs::read(config.rom_path).unwrap();
-    let unmatched_funcs = get_unmatched_funcs(config.asm_dir).unwrap();
+fn do_match(query: &str, window_size: usize, config: &ConfigSettings) {
+    let rom_bytes = std::fs::read(&config.rom_path).unwrap();
+    let unmatched_funcs = get_unmatched_funcs(&config.asm_dir).unwrap();
     let mut mapfile = MapFile::new();
-    mapfile.parse_map_contents(std::fs::read_to_string(config.map_path).unwrap());
+    mapfile.parse_map_contents(std::fs::read_to_string(&config.map_path).unwrap());
 
-    let query_sym_info = match mapfile.find_symbol_by_name(&args.query) {
+    let query_sym_info = match mapfile.find_symbol_by_name(query) {
         Some(x) => x,
         None => {
-            println!("Symbol {:?} not found", args.query);
+            println!("Symbol {:?} not found", query);
             return;
         }
     };
@@ -199,7 +207,7 @@ fn main() {
     let query_bytes =
         get_symbol_bytes(&query_sym_info.symbol, &rom_bytes, &config.endianness).unwrap();
 
-    let query_hashes = get_hashes(&query_bytes, args.window_size);
+    let query_hashes = get_hashes(&query_bytes, window_size);
 
     for segment in &mapfile.segments_list {
         for file in &segment.files_list {
@@ -226,19 +234,19 @@ fn main() {
                             true => "100%",
                             false => "99%",
                         };
-                        println!("{}{} matches {}", s.name, decompiled_str, match_pct);
+                        println!("{}{} matches {}", s.name, decompiled_str.green(), match_pct);
                         continue;
                     }
 
-                    let hashes = get_hashes(&bytes, args.window_size);
+                    let hashes = get_hashes(&bytes, window_size);
 
-                    let pair_matches = get_pair_matches(&query_hashes, &hashes, args.window_size);
+                    let pair_matches = get_pair_matches(&query_hashes, &hashes, window_size);
 
                     if pair_matches.len() == 0 {
                         continue;
                     }
 
-                    println!("{}{}:", s.name, decompiled_str);
+                    println!("{}{}:", s.name, decompiled_str.green());
 
                     for m in pair_matches {
                         let query_str = format!("query [{}-{}]", m.offset1, m.offset1 + m.length);
@@ -253,6 +261,90 @@ fn main() {
                     }
                 }
             }
+        }
+    }
+}
+
+fn do_crossmatch(config: &ConfigSettings) {
+    let rom_bytes = std::fs::read(&config.rom_path).unwrap();
+    let mut mapfile = MapFile::new();
+    mapfile.parse_map_contents(std::fs::read_to_string(&config.map_path).unwrap());
+    //let mut unmatched_funcs = get_unmatched_funcs(&config.asm_dir).unwrap();
+    let mut clusters: Vec<Vec<&Symbol>> = Vec::new();
+
+    let threshold = 0.985;
+
+    // Collect all symbol bytes
+    let symbol_bytes: HashMap<&Symbol, SymbolBytes> = mapfile
+        .segments_list
+        .iter()
+        .flat_map(|x| x.files_list.iter())
+        .filter(|x| x.section_type == ".text")
+        .flat_map(|x| x.symbols.iter())
+        .filter(|x| x.vrom.is_some() && x.size.is_some())
+        .map(|x| {
+            let sb = get_symbol_bytes(&x, &rom_bytes, &config.endianness);
+            (x, sb.unwrap())
+        })
+        .collect();
+
+    for (symbol, bytes) in &symbol_bytes {
+        let mut cluster_match = false;
+
+        for cluster in clusters.iter_mut() {
+            let cluster_score = diff_syms(&bytes, &symbol_bytes[cluster[0]], threshold);
+            if cluster_score > threshold {
+                cluster_match = true;
+                cluster.push(symbol);
+                break;
+            }
+        }
+
+        // Add this symbol to a new cluster if it didn't match any existing clusters
+        if !cluster_match {
+            clusters.push(vec![symbol]);
+        }
+    }
+
+    // Sort clusters by size
+    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+
+    // Print clusters
+    for cluster in clusters.iter().filter(|x| x.len() > 1) {
+        println!("Cluster {} has {} symbols", cluster[0].name, cluster.len());
+    }
+}
+
+fn diff_syms(sym1: &SymbolBytes, sym2: &SymbolBytes, threshold: f32) -> f32 {
+    // The minimum edit distance for two strings of different lengths is `abs(l1 - l2)`
+    // Quickly check if it's impossible to beat the threshold. If it is, then return 0
+    let l1 = sym1.insns.len();
+    let l2: usize = sym2.insns.len();
+    let max_edit_dist = (l1 + l2) as f32;
+    if (l1.abs_diff(l2) as f32 / max_edit_dist) > (1.0 - threshold) {
+        return 0.0;
+    }
+
+    let edit_dist = levenshtein(&sym1.insns, &sym2.insns) as f32;
+    let normalized_edit_dist = (max_edit_dist - edit_dist) / max_edit_dist;
+
+    if normalized_edit_dist == 1.0 && sym1.raw != sym2.raw {
+        return 0.99;
+    }
+    normalized_edit_dist
+}
+
+fn main() {
+    let config = load_config();
+
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::Match { query, window_size } => {
+            do_match(query, *window_size, &config);
+        }
+        Commands::Cross => {
+            do_crossmatch(&config);
         }
     }
 }
