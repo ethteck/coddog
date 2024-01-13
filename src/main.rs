@@ -19,6 +19,12 @@ struct ConfigSettings {
     endianness: Endianness,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Endianness {
+    Little,
+    Big,
+}
+
 /// Find cod
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -36,12 +42,6 @@ enum Commands {
         window_size: usize,
     },
     Cross,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Endianness {
-    Little,
-    Big,
 }
 
 struct SymbolBytes {
@@ -86,7 +86,7 @@ fn load_config() -> ConfigSettings {
     }
 }
 
-fn get_unmatched_funcs(asm_dir: &PathBuf) -> Result<Vec<String>> {
+fn get_unmatched_funcs(asm_dir: &Path) -> Result<Vec<String>> {
     let mut unmatched_funcs = Vec::new();
 
     for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
@@ -100,8 +100,8 @@ fn get_unmatched_funcs(asm_dir: &PathBuf) -> Result<Vec<String>> {
 
 fn get_symbol_bytes(
     symbol: &Symbol,
-    rom_bytes: &Vec<u8>,
-    endianness: &Endianness,
+    rom_bytes: &[u8],
+    endianness: Endianness,
 ) -> Result<SymbolBytes> {
     if symbol.vrom.is_none() || symbol.size.is_none() {
         return Err(anyhow::anyhow!("Symbol {:?} has no vrom or size", symbol));
@@ -112,7 +112,7 @@ fn get_symbol_bytes(
 
     // Remove trailing nops
     let mut bs = raw.clone();
-    while bs.len() > 0 && bs[bs.len() - 1] == 0 {
+    while !bs.is_empty() && bs[bs.len() - 1] == 0 {
         bs.pop();
     }
 
@@ -125,7 +125,7 @@ fn get_symbol_bytes(
         .iter()
         .skip(skip_amt)
         .step_by(4)
-        .map(|x| x >> 2)
+        .map(|x| x >> 2) // normalize to just opcodes
         .collect();
 
     let ret = SymbolBytes { raw, insns };
@@ -146,11 +146,7 @@ fn get_hashes(bytes: &SymbolBytes, window_size: usize) -> Vec<u64> {
     ret
 }
 
-fn get_pair_matches(
-    hashes_1: &Vec<u64>,
-    hashes_2: &Vec<u64>,
-    window_size: usize,
-) -> Vec<InsnMatch> {
+fn get_pair_matches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) -> Vec<InsnMatch> {
     let mut matches = Vec::new();
 
     let matching_hashes = hashes_1
@@ -164,7 +160,7 @@ fn get_pair_matches(
         })
         .collect::<Vec<InsnMatch>>();
 
-    if matching_hashes.len() == 0 {
+    if matching_hashes.is_empty() {
         return matches;
     }
 
@@ -184,7 +180,7 @@ fn get_pair_matches(
             offset1: group[0].offset1,
             offset2: group[0].offset2,
             length: group.len() + window_size,
-        })
+        });
     }
 
     matches
@@ -196,16 +192,13 @@ fn do_match(query: &str, window_size: usize, config: &ConfigSettings) {
     let mut mapfile = MapFile::new();
     mapfile.parse_map_contents(std::fs::read_to_string(&config.map_path).unwrap());
 
-    let query_sym_info = match mapfile.find_symbol_by_name(query) {
-        Some(x) => x,
-        None => {
-            println!("Symbol {:?} not found", query);
-            return;
-        }
+    let Some(query_sym_info) = mapfile.find_symbol_by_name(query) else {
+        println!("Symbol {query:?} not found");
+        return;
     };
 
     let query_bytes =
-        get_symbol_bytes(&query_sym_info.symbol, &rom_bytes, &config.endianness).unwrap();
+        get_symbol_bytes(&query_sym_info.symbol, &rom_bytes, config.endianness).unwrap();
 
     let query_hashes = get_hashes(&query_bytes, window_size);
 
@@ -220,19 +213,21 @@ fn do_match(query: &str, window_size: usize, config: &ConfigSettings) {
                     continue;
                 }
 
-                let decompiled_str = match unmatched_funcs.contains(&s.name) {
-                    true => "",
-                    false => " (decompiled)",
+                let decompiled_str = if unmatched_funcs.contains(&s.name) {
+                    ""
+                } else {
+                    " (decompiled)"
                 };
 
-                let sb = get_symbol_bytes(&s, &rom_bytes, &config.endianness);
+                let sb = get_symbol_bytes(s, &rom_bytes, config.endianness);
                 if sb.is_ok() {
                     let bytes = sb.unwrap();
 
                     if query_bytes.insns == bytes.insns {
-                        let match_pct = match query_bytes.raw == bytes.raw {
-                            true => "100%",
-                            false => "99%",
+                        let match_pct = if query_bytes.raw == bytes.raw {
+                            "100%"
+                        } else {
+                            "99%"
                         };
                         println!("{}{} matches {}", s.name, decompiled_str.green(), match_pct);
                         continue;
@@ -242,7 +237,7 @@ fn do_match(query: &str, window_size: usize, config: &ConfigSettings) {
 
                     let pair_matches = get_pair_matches(&query_hashes, &hashes, window_size);
 
-                    if pair_matches.len() == 0 {
+                    if pair_matches.is_empty() {
                         continue;
                     }
 
@@ -257,7 +252,7 @@ fn do_match(query: &str, window_size: usize, config: &ConfigSettings) {
                             m.offset2 + m.length,
                             m.length
                         );
-                        println!("\t{} matches {}", query_str, target_str)
+                        println!("\t{query_str} matches {target_str}");
                     }
                 }
             }
@@ -283,7 +278,7 @@ fn do_crossmatch(config: &ConfigSettings) {
         .flat_map(|x| x.symbols.iter())
         .filter(|x| x.vrom.is_some() && x.size.is_some())
         .map(|x| {
-            let sb = get_symbol_bytes(&x, &rom_bytes, &config.endianness);
+            let sb = get_symbol_bytes(x, &rom_bytes, config.endianness);
             (x, sb.unwrap())
         })
         .collect();
@@ -291,8 +286,8 @@ fn do_crossmatch(config: &ConfigSettings) {
     for (symbol, bytes) in &symbol_bytes {
         let mut cluster_match = false;
 
-        for cluster in clusters.iter_mut() {
-            let cluster_score = diff_syms(&bytes, &symbol_bytes[cluster[0]], threshold);
+        for cluster in &mut clusters {
+            let cluster_score = diff_syms(bytes, &symbol_bytes[cluster[0]], threshold);
             if cluster_score > threshold {
                 cluster_match = true;
                 cluster.push(symbol);
@@ -307,7 +302,7 @@ fn do_crossmatch(config: &ConfigSettings) {
     }
 
     // Sort clusters by size
-    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.len()));
 
     // Print clusters
     for cluster in clusters.iter().filter(|x| x.len() > 1) {
