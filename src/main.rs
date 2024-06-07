@@ -1,28 +1,48 @@
 use anyhow::{Ok, Result};
+use bincode::serialize_into;
 use clap::{Parser, Subcommand};
 use colored::*;
 use config::Config;
+use dashmap::DashMap;
 use editdistancek::edit_distance_bounded;
 use glob::glob;
-use mapfile_parser::{MapFile, Symbol};
+use mapfile_parser::MapFile;
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
+    fs::File,
     hash::{Hash, Hasher},
+    io::BufWriter,
     path::{Path, PathBuf},
 };
 
-#[derive(Clone)]
-struct ConfigSettings {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum Endianness {
+    Little,
+    Big,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct ProjectConfig {
+    name: String,
+    shortname: String,
     asm_dir: PathBuf,
     map_path: PathBuf,
     rom_path: PathBuf,
     endianness: Endianness,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Endianness {
-    Little,
-    Big,
+#[derive(Clone, Serialize, Deserialize)]
+struct ConfigSettings {
+    db_path: PathBuf,
+    projects: Vec<ProjectConfig>,
+}
+
+impl ConfigSettings {
+    fn project_config_by_shortname(&self, shortname: &str) -> Option<&ProjectConfig> {
+        self.projects.iter().find(|x| x.shortname == shortname)
+    }
 }
 
 /// Find cod
@@ -34,7 +54,30 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
+    Create {
+        /// Name of the project
+        project_name: String,
+
+        /// Short name of the project
+        project_shortname: String,
+
+        /// Path to the directory containing the .s files
+        asm_dir: String,
+
+        /// Path to the map file
+        map_path: String,
+
+        /// Path to the ROM file
+        rom_path: String,
+
+        /// Endianness of the ROM file
+        /// #[arg(default_value = "little", possible_values = &["little", "big"])]
+        endianness: String,
+    },
     Submatch {
+        /// The project (shortname) to search in
+        project: String,
+
         /// Name of the query function
         query: String,
 
@@ -42,6 +85,9 @@ enum Commands {
         window_size: usize,
     },
     Match {
+        /// The project (shortname) to search in
+        project: String,
+
         /// Name of the query function
         query: String,
 
@@ -50,22 +96,52 @@ enum Commands {
         threshold: f32,
     },
     Cross {
+        /// The project (shortname) to search in
+        project: String,
+
         /// Similarity threshold
         #[arg(default_value = "0.985")]
         threshold: f32,
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct CodDogSym {
+#[derive(Debug, Serialize, Deserialize)]
+struct Project {
+    name: String,
+    short_name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Symbol {
+    // the project this symbol belongs to
+    pub project_id: u64,
     // the name of the symbol
     pub name: String,
-    // the raw bytes of the symbol
-    pub bytes: Vec<u8>,
+    // a hash of the raw bytes of the symbol
+    pub byte_hash: u64,
+    // a hash of the normalized instructions of the symbol
+    pub insn_hash: u64,
     // the symbol's instructions, normalized to essentially just opcodes
     pub insns: Vec<u8>,
     // whether the symbol is decompiled
     pub is_decompiled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SymbolSlice {
+    // the slice hash
+    hash: u64,
+    // the symbol this slice belongs to
+    symbol_id: u64,
+    // the offset of the slice into the symbol
+    offset: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CodDogDB {
+    projects: HashMap<u64, Project>,
+    symbols: HashMap<u64, Symbol>,
+    slices: HashMap<u64, SmallVec<[SymbolSlice; 1]>>,
 }
 
 fn load_config() -> ConfigSettings {
@@ -74,29 +150,22 @@ fn load_config() -> ConfigSettings {
         .build()
         .unwrap();
 
-    let settings_map = settings
-        .try_deserialize::<HashMap<String, String>>()
-        .unwrap();
+    let settings_map = settings.try_deserialize::<ConfigSettings>().unwrap();
 
-    let root_dir: &Path = Path::new(settings_map.get("root_dir").unwrap());
-    let asm_dir = root_dir.join(settings_map.get("asm_dir").unwrap());
-    let map_path = root_dir.join(settings_map.get("map_path").unwrap());
-    let rom_path = root_dir.join(settings_map.get("rom_path").unwrap());
-    let endianness = match settings_map.get("endianness").unwrap().as_str() {
-        "little" => Endianness::Little,
-        "big" => Endianness::Big,
-        _ => panic!("Invalid endianness"),
-    };
+    // let root_dir: &Path = Path::new(settings_map.get("root_dir").unwrap());
+    // let asm_dir = root_dir.join(settings_map.get("asm_dir").unwrap());
+    // let map_path = root_dir.join(settings_map.get("map_path").unwrap());
+    // let rom_path = root_dir.join(settings_map.get("rom_path").unwrap());
+    // let endianness = match settings_map.get("endianness").unwrap().as_str() {
+    //     "little" => Endianness::Little,
+    //     "big" => Endianness::Big,
+    //     _ => panic!("Invalid endianness"),
+    // };
 
-    ConfigSettings {
-        asm_dir,
-        map_path,
-        rom_path,
-        endianness,
-    }
+    settings_map
 }
 
-fn get_hashes(bytes: &CodDogSym, window_size: usize) -> Vec<u64> {
+fn get_hashes(bytes: &Symbol, window_size: usize) -> Vec<u64> {
     let ret: Vec<u64> = bytes
         .insns
         .windows(window_size)
@@ -157,11 +226,11 @@ fn get_submatches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) -> Vec
 }
 
 struct FunctionMatch<'a> {
-    symbol: &'a CodDogSym,
+    symbol: &'a Symbol,
     score: f32,
 }
 
-fn do_match(query: &str, threshold: f32, symbols: &[CodDogSym]) {
+fn do_match(query: &str, threshold: f32, symbols: &[Symbol]) {
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
         return;
@@ -195,7 +264,7 @@ fn do_match(query: &str, threshold: f32, symbols: &[CodDogSym]) {
     }
 }
 
-fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
+fn do_submatch(query: &str, window_size: usize, symbols: &[Symbol]) {
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
         return;
@@ -211,7 +280,7 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
         let decompiled_str = if s.is_decompiled { " (decompiled)" } else { "" };
 
         if query_sym.insns == s.insns {
-            let match_pct = if query_sym.bytes == s.bytes {
+            let match_pct = if query_sym.byte_hash == s.byte_hash {
                 "100%"
             } else {
                 "99%"
@@ -244,8 +313,8 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
     }
 }
 
-fn do_crossmatch(threshold: f32, symbols: &[CodDogSym]) {
-    let mut clusters: Vec<Vec<&CodDogSym>> = Vec::new();
+fn do_crossmatch(threshold: f32, symbols: &[Symbol]) {
+    let mut clusters: Vec<Vec<&Symbol>> = Vec::new();
 
     for symbol in symbols {
         let mut cluster_match = false;
@@ -274,7 +343,37 @@ fn do_crossmatch(threshold: f32, symbols: &[CodDogSym]) {
     }
 }
 
-fn diff_symbols(sym1: &CodDogSym, sym2: &CodDogSym, threshold: f32) -> f32 {
+fn do_crossmatch2(threshold: f32, db: &CodDogDB) {
+    let mut clusters: Vec<Vec<Symbol>> = Vec::new();
+
+    for (_, symbol) in db.symbols.iter() {
+        let mut cluster_match = false;
+
+        for cluster in &mut clusters {
+            let cluster_score = diff_symbols(&symbol, &cluster[0], threshold);
+            if cluster_score > threshold {
+                cluster_match = true;
+                cluster.push(symbol.clone());
+                break;
+            }
+        }
+
+        // Add this symbol to a new cluster if it didn't match any existing clusters
+        if !cluster_match {
+            clusters.push(vec![symbol.clone()]);
+        }
+    }
+
+    // Sort clusters by size
+    clusters.sort_by_key(|c| std::cmp::Reverse(c.len()));
+
+    // Print clusters
+    for cluster in clusters.iter().filter(|x| x.len() > 1) {
+        println!("Cluster {} has {} symbols", cluster[0].name, cluster.len());
+    }
+}
+
+fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
     // The minimum edit distance for two strings of different lengths is `abs(l1 - l2)`
     // Quickly check if it's impossible to beat the threshold. If it is, then return 0
     let l1 = sym1.insns.len();
@@ -289,7 +388,7 @@ fn diff_symbols(sym1: &CodDogSym, sym2: &CodDogSym, threshold: f32) -> f32 {
         let edit_dist = edit_distance as f32;
         let normalized_edit_dist = (max_edit_dist - edit_dist) / max_edit_dist;
 
-        if normalized_edit_dist == 1.0 && sym1.bytes != sym2.bytes {
+        if normalized_edit_dist == 1.0 && sym1.byte_hash != sym2.byte_hash {
             return 0.9999;
         }
         normalized_edit_dist
@@ -299,15 +398,11 @@ fn diff_symbols(sym1: &CodDogSym, sym2: &CodDogSym, threshold: f32) -> f32 {
 }
 
 fn get_symbol_bytes(
-    symbol: &Symbol,
+    start: usize,
+    end: usize,
     rom_bytes: &[u8],
     endianness: Endianness,
 ) -> Result<(Vec<u8>, Vec<u8>)> {
-    if symbol.vrom.is_none() || symbol.size.is_none() {
-        return Err(anyhow::anyhow!("Symbol {:?} has no vrom or size", symbol));
-    }
-    let start = symbol.vrom.unwrap() as usize;
-    let end = start + symbol.size.unwrap() as usize;
     let raw = rom_bytes[start..end].to_vec();
 
     // Remove trailing nops
@@ -343,13 +438,13 @@ fn get_unmatched_funcs(asm_dir: &Path) -> Result<Vec<String>> {
     Ok(unmatched_funcs)
 }
 
-fn collect_symbols(config: &ConfigSettings) -> Result<Vec<CodDogSym>> {
+fn collect_symbols(config: &ProjectConfig) -> Result<Vec<Symbol>> {
     let rom_bytes = std::fs::read(&config.rom_path).unwrap();
     let unmatched_funcs = get_unmatched_funcs(&config.asm_dir).unwrap();
     let mut mapfile = MapFile::new();
     mapfile.parse_map_contents(std::fs::read_to_string(&config.map_path).unwrap());
 
-    let symbol_bytes: Vec<CodDogSym> = mapfile
+    let symbol_bytes: Vec<Symbol> = mapfile
         .segments_list
         .iter()
         .flat_map(|x| x.files_list.iter())
@@ -357,10 +452,25 @@ fn collect_symbols(config: &ConfigSettings) -> Result<Vec<CodDogSym>> {
         .flat_map(|x| x.symbols.iter())
         .filter(|x| x.vrom.is_some() && x.size.is_some())
         .map(|x| {
-            let (bytes, insns) = get_symbol_bytes(x, &rom_bytes, config.endianness).unwrap();
-            CodDogSym {
+            let start = x.vrom.unwrap() as usize;
+            let end = start + x.size.unwrap() as usize;
+            let (bytes, insns) =
+                get_symbol_bytes(start, end, &rom_bytes, config.endianness).unwrap();
+            let byte_hash = {
+                let mut hasher = DefaultHasher::new();
+                bytes.hash(&mut hasher);
+                hasher.finish()
+            };
+            let insn_hash = {
+                let mut hasher = DefaultHasher::new();
+                insns.hash(&mut hasher);
+                hasher.finish()
+            };
+            Symbol {
+                project_id: 0, // TODO address
                 name: x.name.clone(),
-                bytes,
+                byte_hash,
+                insn_hash,
                 insns,
                 is_decompiled: !unmatched_funcs.contains(&x.name),
             }
@@ -375,17 +485,130 @@ fn main() {
 
     let cli = Cli::parse();
 
-    let symbols = collect_symbols(&config).unwrap();
+    let mut db: CodDogDB = match cli.command {
+        Commands::Create { .. } => {
+            if config.db_path.exists() {
+                let f = File::open(config.db_path.clone()).unwrap();
+                bincode::deserialize_from(f).unwrap()
+            } else {
+                CodDogDB {
+                    projects: HashMap::new(),
+                    symbols: HashMap::new(),
+                    slices: HashMap::new(),
+                }
+            }
+        }
+        _ => {
+            if config.db_path.exists() {
+                let f: File = File::open(config.db_path.clone()).unwrap();
+                bincode::deserialize_from(f).unwrap()
+            } else {
+                panic!("Database not found; please run create first");
+            }
+        }
+    };
+
+    println!(
+        "Loaded {} projects, {} symbols, and {} slices from disk",
+        db.projects.len(),
+        db.symbols.len(),
+        db.slices.len()
+    );
 
     match &cli.command {
-        Commands::Match { query, threshold } => {
+        Commands::Create {
+            project_name,
+            project_shortname,
+            asm_dir,
+            map_path,
+            rom_path,
+            endianness,
+        } => {
+            let pjconfig = ProjectConfig {
+                name: project_name.clone(),
+                shortname: project_shortname.clone(),
+                asm_dir: PathBuf::from(asm_dir),
+                map_path: PathBuf::from(map_path),
+                rom_path: PathBuf::from(rom_path),
+                endianness: match endianness.as_str() {
+                    "little" => Endianness::Little,
+                    "big" => Endianness::Big,
+                    _ => panic!("Invalid endianness"),
+                },
+            };
+
+            let window_size = 8;
+
+            let symbols = collect_symbols(&pjconfig).unwrap();
+
+            let project_id = db.projects.len() as u64;
+            db.projects.insert(
+                project_id,
+                Project {
+                    name: project_name.clone(),
+                    short_name: project_shortname.clone(),
+                },
+            );
+
+            for (i, symbol) in symbols.iter().enumerate() {
+                db.symbols.insert(i as u64, symbol.clone());
+            }
+
+            for (s, symbol) in symbols.iter().enumerate() {
+                for (o, slice) in get_hashes(symbol, window_size).iter().enumerate() {
+                    match db.slices.contains_key(slice) {
+                        true => {
+                            db.slices.get_mut(slice).unwrap().push(SymbolSlice {
+                                hash: *slice,
+                                symbol_id: s as u64,
+                                offset: o,
+                            });
+                        }
+                        false => {
+                            db.slices.insert(
+                                *slice,
+                                SmallVec::from_buf([SymbolSlice {
+                                    hash: *slice,
+                                    symbol_id: s as u64,
+                                    offset: o,
+                                }]),
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Write to disk
+            let mut f = BufWriter::new(File::create(config.db_path).unwrap());
+            serialize_into(&mut f, &db).unwrap();
+
+            println!(
+                "Wrote {} symbols and {} slices (length {}) to disk",
+                db.symbols.len(),
+                db.slices.len(),
+                window_size
+            );
+        }
+        Commands::Match {
+            project,
+            query,
+            threshold,
+        } => {
+            let pconfig = config.project_config_by_shortname(project).unwrap();
+            let symbols = collect_symbols(pconfig).unwrap();
             do_match(query, *threshold, &symbols);
         }
-        Commands::Submatch { query, window_size } => {
+        Commands::Submatch {
+            project,
+            query,
+            window_size,
+        } => {
+            let pconfig = config.project_config_by_shortname(project).unwrap();
+            let symbols = collect_symbols(pconfig).unwrap();
             do_submatch(query, *window_size, &symbols);
         }
-        Commands::Cross { threshold } => {
-            do_crossmatch(*threshold, &symbols);
+        Commands::Cross { project, threshold } => {
+            do_crossmatch2(*threshold, &db);
         }
     }
 }
