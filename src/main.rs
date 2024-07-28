@@ -3,7 +3,6 @@ use bincode::serialize_into;
 use clap::{Parser, Subcommand};
 use colored::*;
 use config::Config;
-use dashmap::DashMap;
 use editdistancek::edit_distance_bounded;
 use glob::glob;
 use mapfile_parser::MapFile;
@@ -313,37 +312,7 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[Symbol]) {
     }
 }
 
-fn do_crossmatch(threshold: f32, symbols: &[Symbol]) {
-    let mut clusters: Vec<Vec<&Symbol>> = Vec::new();
-
-    for symbol in symbols {
-        let mut cluster_match = false;
-
-        for cluster in &mut clusters {
-            let cluster_score = diff_symbols(symbol, cluster[0], threshold);
-            if cluster_score > threshold {
-                cluster_match = true;
-                cluster.push(symbol);
-                break;
-            }
-        }
-
-        // Add this symbol to a new cluster if it didn't match any existing clusters
-        if !cluster_match {
-            clusters.push(vec![symbol]);
-        }
-    }
-
-    // Sort clusters by size
-    clusters.sort_by_key(|c| std::cmp::Reverse(c.len()));
-
-    // Print clusters
-    for cluster in clusters.iter().filter(|x| x.len() > 1) {
-        println!("Cluster {} has {} symbols", cluster[0].name, cluster.len());
-    }
-}
-
-fn do_crossmatch2(threshold: f32, db: &CodDogDB) {
+fn do_crossmatch(threshold: f32, db: &CodDogDB) {
     let mut clusters: Vec<Vec<Symbol>> = Vec::new();
 
     for (_, symbol) in db.symbols.iter() {
@@ -608,7 +577,7 @@ fn main() {
             do_submatch(query, *window_size, &symbols);
         }
         Commands::Cross { project, threshold } => {
-            do_crossmatch2(*threshold, &db);
+            do_crossmatch(*threshold, &db);
         }
     }
 }
