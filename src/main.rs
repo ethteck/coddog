@@ -1,28 +1,30 @@
 use anyhow::{Ok, Result};
 use clap::{Parser, Subcommand};
 use colored::*;
-use config::Config;
+use decomp_settings::{config::Config, scan_for_config};
 use editdistancek::edit_distance_bounded;
 use glob::glob;
 use mapfile_parser::{MapFile, Symbol};
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    path::{Path, PathBuf},
+    path::Path,
 };
-
-#[derive(Clone)]
-struct ConfigSettings {
-    asm_dir: PathBuf,
-    map_path: PathBuf,
-    rom_path: PathBuf,
-    endianness: Endianness,
-}
 
 #[derive(Debug, Clone, Copy)]
 enum Endianness {
     Little,
     Big,
+}
+
+impl Endianness {
+    fn from_platform(platform: &str) -> Self {
+        match platform {
+            "n64" => Endianness::Big,
+            "ps2" => Endianness::Little,
+            _ => panic!("Unknown platform {}", platform),
+        }
+    }
 }
 
 /// Find cod
@@ -66,34 +68,6 @@ struct CodDogSym {
     pub insns: Vec<u8>,
     // whether the symbol is decompiled
     pub is_decompiled: bool,
-}
-
-fn load_config() -> ConfigSettings {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("config"))
-        .build()
-        .unwrap();
-
-    let settings_map = settings
-        .try_deserialize::<HashMap<String, String>>()
-        .unwrap();
-
-    let root_dir: &Path = Path::new(settings_map.get("root_dir").unwrap());
-    let asm_dir = root_dir.join(settings_map.get("asm_dir").unwrap());
-    let map_path = root_dir.join(settings_map.get("map_path").unwrap());
-    let rom_path = root_dir.join(settings_map.get("rom_path").unwrap());
-    let endianness = match settings_map.get("endianness").unwrap().as_str() {
-        "little" => Endianness::Little,
-        "big" => Endianness::Big,
-        _ => panic!("Invalid endianness"),
-    };
-
-    ConfigSettings {
-        asm_dir,
-        map_path,
-        rom_path,
-        endianness,
-    }
 }
 
 fn get_hashes(bytes: &CodDogSym, window_size: usize) -> Vec<u64> {
@@ -343,11 +317,21 @@ fn get_unmatched_funcs(asm_dir: &Path) -> Result<Vec<String>> {
     Ok(unmatched_funcs)
 }
 
-fn collect_symbols(config: &ConfigSettings) -> Result<Vec<CodDogSym>> {
-    let rom_bytes = std::fs::read(&config.rom_path).unwrap();
-    let unmatched_funcs = get_unmatched_funcs(&config.asm_dir).unwrap();
+fn collect_symbols(config: &Config) -> Result<Vec<CodDogSym>> {
+    let version = config.get_default_version()?;
+
+    let baserom_path = version.paths.baserom.unwrap();
+    let asm_dir = version.paths.asm.unwrap();
+    let map_path = version.paths.map.unwrap();
+
+    let baserom_path = Path::new(&baserom_path);
+    let asm_dir = Path::new(&asm_dir);
+    let map_path = Path::new(&map_path);
+
+    let rom_bytes = std::fs::read(baserom_path).unwrap();
+    let unmatched_funcs = get_unmatched_funcs(asm_dir).unwrap();
     let mut mapfile = MapFile::new();
-    mapfile.parse_map_contents(std::fs::read_to_string(&config.map_path).unwrap());
+    mapfile.parse_map_contents(std::fs::read_to_string(map_path).unwrap());
 
     let symbol_bytes: Vec<CodDogSym> = mapfile
         .segments_list
@@ -357,7 +341,9 @@ fn collect_symbols(config: &ConfigSettings) -> Result<Vec<CodDogSym>> {
         .flat_map(|x| x.symbols.iter())
         .filter(|x| x.vrom.is_some() && x.size.is_some())
         .map(|x| {
-            let (bytes, insns) = get_symbol_bytes(x, &rom_bytes, config.endianness).unwrap();
+            let (bytes, insns) =
+                get_symbol_bytes(x, &rom_bytes, Endianness::from_platform(&config.platform))
+                    .unwrap();
             CodDogSym {
                 name: x.name.clone(),
                 bytes,
@@ -371,7 +357,7 @@ fn collect_symbols(config: &ConfigSettings) -> Result<Vec<CodDogSym>> {
 }
 
 fn main() {
-    let config = load_config();
+    let config = scan_for_config().unwrap();
 
     let cli = Cli::parse();
 
