@@ -1,31 +1,30 @@
 use anyhow::{Ok, Result};
 use clap::{Parser, Subcommand};
 use colored::*;
-use decomp_settings::{config::Config, scan_for_config};
+use core::{get_hashes, get_submatches, Binary, Endianness, Symbol};
+use decomp_settings::{config::Version, read_config, scan_for_config};
 use editdistancek::edit_distance_bounded;
 use glob::glob;
-use mapfile_parser::{MapFile, Symbol};
+use mapfile_parser::MapFile;
+use object::{Object, ObjectSection, ObjectSymbol};
 use std::{
     collections::hash_map::DefaultHasher,
+    fs,
     hash::{Hash, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
-#[derive(Debug, Clone, Copy)]
-enum Endianness {
-    Little,
-    Big,
-}
+mod cluster;
+mod core;
 
-impl Endianness {
-    fn from_platform(platform: &str) -> Self {
-        match platform {
-            "n64" => Endianness::Big,
-            "ps2" => Endianness::Little,
-            _ => panic!("Unknown platform {}", platform),
-        }
-    }
-}
+const BINARY_COLORS: [Color; 6] = [
+    Color::BrightGreen,
+    Color::BrightYellow,
+    Color::BrightBlue,
+    Color::BrightMagenta,
+    Color::BrightCyan,
+    Color::BrightRed,
+];
 
 /// Find cod
 #[derive(Parser)]
@@ -36,106 +35,78 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
-    Submatch {
-        /// Name of the query function
-        query: String,
-
-        /// Window size
-        window_size: usize,
-    },
+    /// Find functions similar to the query function
     Match {
         /// Name of the query function
         query: String,
 
         /// Similarity threshold
-        #[arg(default_value = "0.985")]
+        #[arg(short, long, default_value = "0.985")]
         threshold: f32,
     },
-    Cross {
+
+    /// Cluster functions by similarity, showing possible duplicates
+    Cluster {
         /// Similarity threshold
-        #[arg(default_value = "0.985")]
+        #[arg(short, long, default_value = "0.985")]
         threshold: f32,
+
+        /// Minimum length of functions (in number of instructions) to consider
+        #[arg(short, long, default_value = "5")]
+        min_len: usize,
     },
-}
 
-#[derive(Debug, PartialEq, Eq)]
-struct CodDogSym {
-    // the name of the symbol
-    pub name: String,
-    // the raw bytes of the symbol
-    pub bytes: Vec<u8>,
-    // the symbol's instructions, normalized to essentially just opcodes
-    pub insns: Vec<u8>,
-    // whether the symbol is decompiled
-    pub is_decompiled: bool,
-}
+    /// Find chunks of code similar to those in the query function
+    Submatch {
+        /// Name of the query function
+        query: String,
 
-fn get_hashes(bytes: &CodDogSym, window_size: usize) -> Vec<u64> {
-    let ret: Vec<u64> = bytes
-        .insns
-        .windows(window_size)
-        .map(|x| {
-            let mut hasher = DefaultHasher::new();
-            (*x).hash(&mut hasher);
-            hasher.finish()
-        })
-        .collect();
-    ret
-}
+        /// Window size (smaller values will find more matches but take longer)
+        window_size: usize,
+    },
 
-#[derive(Debug, Clone, Copy)]
-struct InsnSeqMatch {
-    offset1: usize,
-    offset2: usize,
-    length: usize,
-}
+    /// Compare two binaries, showing the functions in common between them
+    Compare2 {
+        /// Path to the first decomp.yaml
+        yaml1: PathBuf,
 
-fn get_submatches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) -> Vec<InsnSeqMatch> {
-    let mut matches = Vec::new();
+        /// Version to compare from the first yaml
+        version1: String,
 
-    let matching_hashes = hashes_1
-        .iter()
-        .enumerate()
-        .filter(|(_, h)| hashes_2.contains(h))
-        .map(|(i, h)| InsnSeqMatch {
-            offset1: i,
-            offset2: hashes_2.iter().position(|x| x == h).unwrap(),
-            length: 1,
-        })
-        .collect::<Vec<InsnSeqMatch>>();
+        /// Path to the second decomp.yaml
+        yaml2: PathBuf,
 
-    if matching_hashes.is_empty() {
-        return matches;
-    }
+        /// Version to compare from the second yaml
+        version2: String,
 
-    let mut match_groups: Vec<Vec<InsnSeqMatch>> = Vec::new();
-    let mut cur_pos = matching_hashes[0].offset1;
-    for mh in matching_hashes {
-        if mh.offset1 == cur_pos + 1 {
-            match_groups.last_mut().unwrap().push(mh);
-        } else {
-            match_groups.push(vec![mh]);
-        }
-        cur_pos = mh.offset1;
-    }
+        /// Similarity threshold
+        #[arg(short, long, default_value = "0.985")]
+        threshold: f32,
 
-    for group in match_groups {
-        matches.push(InsnSeqMatch {
-            offset1: group[0].offset1,
-            offset2: group[0].offset2,
-            length: group.len() + window_size,
-        });
-    }
+        /// Minimum length of functions (in number of instructions) to consider
+        #[arg(short, long, default_value = "5")]
+        min_len: usize,
+    },
 
-    matches
+    /// Compare one binary to one or more others, showing the functions in common between them
+    CompareN {
+        /// Path to the main decomp.yaml
+        main_yaml: PathBuf,
+
+        /// Version to compare from the main yaml
+        main_version: String,
+
+        /// Path to other projects' decomp.yaml files
+        other_yamls: Vec<PathBuf>,
+    },
 }
 
 struct FunctionMatch<'a> {
-    symbol: &'a CodDogSym,
+    symbol: &'a Symbol,
     score: f32,
 }
 
-fn do_match(query: &str, threshold: f32, symbols: &[CodDogSym]) {
+fn do_match(query: &str, symbols: &[Symbol], threshold: f32) {
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
         return;
@@ -146,7 +117,7 @@ fn do_match(query: &str, threshold: f32, symbols: &[CodDogSym]) {
         .filter(|s| s.name != query_sym.name)
         .map(|s| FunctionMatch {
             symbol: s,
-            score: diff_symbols(query_sym, s, threshold),
+            score: core::diff_symbols(query_sym, s, threshold),
         })
         .filter(|m| m.score > threshold)
         .collect();
@@ -155,21 +126,11 @@ fn do_match(query: &str, threshold: f32, symbols: &[CodDogSym]) {
     matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
     for m in matches {
-        let decompiled_str = if m.symbol.is_decompiled {
-            " (decompiled)"
-        } else {
-            ""
-        };
-        println!(
-            "{:.2}% - {}{}",
-            m.score * 100.0,
-            m.symbol.name,
-            decompiled_str.green(),
-        );
+        println!("{:.2}% - {}", m.score * 100.0, m.symbol.cli_name());
     }
 }
 
-fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
+fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
         return;
@@ -182,15 +143,13 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
             continue;
         }
 
-        let decompiled_str = if s.is_decompiled { " (decompiled)" } else { "" };
-
         if query_sym.insns == s.insns {
             let match_pct = if query_sym.bytes == s.bytes {
                 "100%"
             } else {
                 "99%"
             };
-            println!("{}{} matches {}", s.name, decompiled_str.green(), match_pct);
+            println!("{} matches {}", s.cli_name(), match_pct);
             continue;
         }
 
@@ -202,7 +161,7 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
             continue;
         }
 
-        println!("{}{}:", s.name, decompiled_str.green());
+        println!("{}:", s.cli_name());
 
         for m in pair_matches {
             let query_str = format!("query [{}-{}]", m.offset1, m.offset1 + m.length);
@@ -218,160 +177,259 @@ fn do_submatch(query: &str, window_size: usize, symbols: &[CodDogSym]) {
     }
 }
 
-fn do_crossmatch(threshold: f32, symbols: &[CodDogSym]) {
-    let mut clusters: Vec<Vec<&CodDogSym>> = Vec::new();
-
-    for symbol in symbols {
-        let mut cluster_match = false;
-
-        for cluster in &mut clusters {
-            let cluster_score = diff_symbols(symbol, cluster[0], threshold);
-            if cluster_score > threshold {
-                cluster_match = true;
-                cluster.push(symbol);
-                break;
-            }
-        }
-
-        // Add this symbol to a new cluster if it didn't match any existing clusters
-        if !cluster_match {
-            clusters.push(vec![symbol]);
-        }
-    }
-
-    // Sort clusters by size
-    clusters.sort_by_key(|c| std::cmp::Reverse(c.len()));
-
-    // Print clusters
-    for cluster in clusters.iter().filter(|x| x.len() > 1) {
-        println!("Cluster {} has {} symbols", cluster[0].name, cluster.len());
-    }
-}
-
-fn diff_symbols(sym1: &CodDogSym, sym2: &CodDogSym, threshold: f32) -> f32 {
-    // The minimum edit distance for two strings of different lengths is `abs(l1 - l2)`
-    // Quickly check if it's impossible to beat the threshold. If it is, then return 0
-    let l1 = sym1.insns.len();
-    let l2: usize = sym2.insns.len();
-    let max_edit_dist = (l1 + l2) as f32;
-    if (l1.abs_diff(l2) as f32 / max_edit_dist) > (1.0 - threshold) {
-        return 0.0;
-    }
-
-    let bound = (max_edit_dist - (max_edit_dist * threshold)) as usize;
-    if let Some(edit_distance) = edit_distance_bounded(&sym1.insns, &sym2.insns, bound) {
-        let edit_dist = edit_distance as f32;
-        let normalized_edit_dist = (max_edit_dist - edit_dist) / max_edit_dist;
-
-        if normalized_edit_dist == 1.0 && sym1.bytes != sym2.bytes {
-            return 0.9999;
-        }
-        normalized_edit_dist
-    } else {
-        0.0
-    }
-}
-
-fn get_symbol_bytes(
-    symbol: &Symbol,
-    rom_bytes: &[u8],
-    endianness: Endianness,
-) -> Result<(Vec<u8>, Vec<u8>)> {
-    if symbol.vrom.is_none() || symbol.size.is_none() {
-        return Err(anyhow::anyhow!("Symbol {:?} has no vrom or size", symbol));
-    }
-    let start = symbol.vrom.unwrap() as usize;
-    let end = start + symbol.size.unwrap() as usize;
-    let raw = rom_bytes[start..end].to_vec();
-
+fn get_insns(bytes: &[u8], endianness: Endianness) -> Vec<u8> {
     // Remove trailing nops
-    let mut bs = raw.clone();
+    let mut bs = bytes.to_vec();
     while !bs.is_empty() && bs[bs.len() - 1] == 0 {
         bs.pop();
     }
 
-    let skip_amt = match endianness {
-        Endianness::Little => 3,
-        Endianness::Big => 0,
-    };
-
-    let insns: Vec<u8> = bs
-        .iter()
-        .skip(skip_amt)
-        .step_by(4)
-        .map(|x| x >> 2) // normalize to just opcodes
-        .collect();
-
-    Ok((raw, insns))
-}
-
-fn get_unmatched_funcs(asm_dir: &Path) -> Result<Vec<String>> {
-    let mut unmatched_funcs = Vec::new();
-
-    for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
-        // add filename minus extension to vec
-        let s_file = s_file?;
-        let s_file_stem = s_file.file_stem().unwrap().to_str().unwrap();
-        unmatched_funcs.push(s_file_stem.to_string());
+    match endianness {
+        Endianness::Little => bs.iter().step_by(4).map(|x| x >> 2).collect(),
+        Endianness::Big => bs.iter().skip(3).step_by(4).map(|x| x >> 2).collect(),
     }
-    Ok(unmatched_funcs)
 }
 
-fn collect_symbols(config: &Config) -> Result<Vec<CodDogSym>> {
-    let version = config.get_default_version()?;
+fn get_full_path(config_path: &Path, config: &Version, name: &str) -> Option<PathBuf> {
+    config.paths.get(name).map(|path| {
+        if path.is_relative() {
+            config_path.parent().unwrap().join(path)
+        } else {
+            path.clone()
+        }
+    })
+}
 
-    let baserom_path = version.paths.baserom.unwrap();
-    let asm_dir = version.paths.asm.unwrap();
-    let map_path = version.paths.map.unwrap();
+fn get_unmatched_funcs(config_path: &Path, config: &Version) -> Option<Vec<String>> {
+    get_full_path(config_path, config, "asm").map(|asm_dir| {
+        let mut unmatched_funcs = Vec::new();
 
-    let baserom_path = Path::new(&baserom_path);
-    let asm_dir = Path::new(&asm_dir);
-    let map_path = Path::new(&map_path);
+        for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
+            // add filename minus extension to vec
+            let s_file = s_file.unwrap();
+            let s_file_stem = s_file.file_stem().unwrap().to_str().unwrap();
+            unmatched_funcs.push(s_file_stem.to_string());
+        }
+        unmatched_funcs
+    })
+}
 
-    let rom_bytes = std::fs::read(baserom_path).unwrap();
-    let unmatched_funcs = get_unmatched_funcs(asm_dir).unwrap();
-    let mut mapfile = MapFile::new();
-    mapfile.parse_map_contents(std::fs::read_to_string(map_path).unwrap());
+fn collect_symbols(config: &Version, config_path: &Path, platform: String) -> Result<Vec<Symbol>> {
+    let unmatched_funcs = get_unmatched_funcs(config_path, config);
 
-    let symbol_bytes: Vec<CodDogSym> = mapfile
-        .segments_list
+    if let Some(elf_path) = get_full_path(config_path, config, "elf") {
+        let elf_data = fs::read(elf_path)?;
+        let file = object::File::parse(&*elf_data)?;
+
+        let ret: Vec<Symbol> = file
+            .symbols()
+            .filter(|s| s.kind() == object::SymbolKind::Text)
+            .filter_map(|symbol| {
+                symbol.section_index().and_then(|i| {
+                    file.section_by_index(i)
+                        .ok()
+                        .map(|section| (symbol, section))
+                })
+            })
+            .filter_map(|(symbol, section)| {
+                section
+                    .data_range(symbol.address(), symbol.size())
+                    .ok()
+                    .flatten()
+                    .map(|data| (symbol, data))
+            })
+            .map(|(symbol, data)| {
+                let insns: Vec<u8> = get_insns(data, Endianness::from_platform(&platform));
+                Symbol {
+                    id: 0,
+                    name: symbol.name().unwrap().to_string(),
+                    bytes: data.to_vec(),
+                    insns,
+                    is_decompiled: unmatched_funcs
+                        .as_ref()
+                        .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
+                }
+            })
+            .collect();
+
+        return Ok(ret);
+    }
+
+    if let (Some(baserom_path), Some(map_path)) = (
+        get_full_path(config_path, config, "baserom"),
+        get_full_path(config_path, config, "map"),
+    ) {
+        let rom_bytes = std::fs::read(baserom_path).unwrap();
+        let mut mapfile = MapFile::new();
+        mapfile.parse_map_contents(std::fs::read_to_string(map_path).unwrap().as_str());
+
+        let ret: Vec<Symbol> = mapfile
+            .segments_list
+            .iter()
+            .flat_map(|x| x.files_list.iter())
+            .filter(|x| x.section_type == ".text")
+            .flat_map(|x| x.symbols.iter())
+            .filter(|x| x.vrom.is_some() && x.size.is_some())
+            .enumerate()
+            .map(|(id, x)| {
+                let start = x.vrom.unwrap() as usize;
+                let end = start + x.size.unwrap() as usize;
+                let raw = &rom_bytes[start..end];
+                let insns = get_insns(raw, Endianness::from_platform(&platform));
+
+                Symbol {
+                    id,
+                    name: x.name.clone(),
+                    bytes: raw.to_vec(),
+                    insns,
+                    is_decompiled: unmatched_funcs
+                        .as_ref()
+                        .is_some_and(|fs| !fs.contains(&x.name)),
+                }
+            })
+            .collect();
+
+        return Ok(ret);
+    }
+
+    panic!("No elf or mapfile found");
+}
+
+fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: usize) {
+    let mut matched_syms: Vec<(&Symbol, &Symbol, f32)> = Vec::new();
+
+    bin1.symbols
         .iter()
-        .flat_map(|x| x.files_list.iter())
-        .filter(|x| x.section_type == ".text")
-        .flat_map(|x| x.symbols.iter())
-        .filter(|x| x.vrom.is_some() && x.size.is_some())
-        .map(|x| {
-            let (bytes, insns) =
-                get_symbol_bytes(x, &rom_bytes, Endianness::from_platform(&config.platform))
-                    .unwrap();
-            CodDogSym {
-                name: x.name.clone(),
-                bytes,
-                insns,
-                is_decompiled: !unmatched_funcs.contains(&x.name),
-            }
-        })
-        .collect();
+        .filter(|s| s.insns.len() >= min_len)
+        .for_each(|sym| {
+            let mut best_match: Option<(&Symbol, f32)> = None;
 
-    Ok(symbol_bytes)
+            for sym2 in bin2.symbols.iter().filter(|s| s.insns.len() >= min_len) {
+                let score = core::diff_symbols(sym, sym2, threshold);
+                if score > threshold {
+                    if let Some((_, best_score)) = best_match {
+                        if score > best_score {
+                            best_match = Some((sym2, score));
+                        }
+                    } else {
+                        best_match = Some((sym2, score));
+                    }
+                }
+            }
+
+            if let Some((best_sym, score)) = best_match {
+                matched_syms.push((sym, best_sym, score));
+            }
+        });
+
+    match matched_syms.len() {
+        0 => {
+            println!("No matches found");
+        }
+        _ => {
+            for (sym1, sym2, score) in matched_syms {
+                println!(
+                    "{} - {} ({:.2}%)",
+                    sym1.cli_name_colored(bin1.cli_color),
+                    sym2.cli_name_colored(bin2.cli_color),
+                    score * 100.0
+                );
+            }
+        }
+    }
+}
+
+fn get_cwd_symbols() -> Vec<Symbol> {
+    let config = scan_for_config().unwrap();
+    let version = &config.versions[0]; // TODO: allow specifying
+    collect_symbols(version, &std::env::current_dir().unwrap(), config.platform).unwrap()
 }
 
 fn main() {
-    let config = scan_for_config().unwrap();
-
-    let cli = Cli::parse();
-
-    let symbols = collect_symbols(&config).unwrap();
+    let cli: Cli = Cli::parse();
 
     match &cli.command {
         Commands::Match { query, threshold } => {
-            do_match(query, *threshold, &symbols);
+            let symbols = get_cwd_symbols();
+            do_match(query, &symbols, *threshold);
         }
         Commands::Submatch { query, window_size } => {
-            do_submatch(query, *window_size, &symbols);
+            let symbols = get_cwd_symbols();
+            do_submatch(query, &symbols, *window_size);
         }
-        Commands::Cross { threshold } => {
-            do_crossmatch(*threshold, &symbols);
+        Commands::Cluster { threshold, min_len } => {
+            let symbols = get_cwd_symbols();
+            cluster::do_cluster(&symbols, *threshold, *min_len);
+        }
+        Commands::Compare2 {
+            yaml1,
+            version1,
+            yaml2,
+            version2,
+            threshold,
+            min_len,
+        } => {
+            let config1 = read_config(yaml1.to_path_buf()).unwrap();
+            let config2 = read_config(yaml2.to_path_buf()).unwrap();
+
+            let version1 = config1.get_version_by_name(version1).unwrap();
+            let version2 = config2.get_version_by_name(version2).unwrap();
+
+            let symbols1 = collect_symbols(&version1, yaml1, config1.platform).unwrap();
+            let symbols2 = collect_symbols(&version2, yaml2, config2.platform).unwrap();
+
+            let bin1 = Binary {
+                symbols: symbols1,
+                cli_color: BINARY_COLORS[0],
+            };
+
+            let bin2 = Binary {
+                symbols: symbols2,
+                cli_color: BINARY_COLORS[1],
+            };
+
+            do_compare_binaries(&bin1, &bin2, *threshold, *min_len);
+        }
+        Commands::CompareN {
+            main_yaml,
+            main_version,
+            other_yamls,
+        } => {
+            let main_config = read_config(main_yaml.to_path_buf()).unwrap();
+            let main_version = main_config.get_version_by_name(main_version).unwrap();
+            let main_symbols =
+                collect_symbols(&main_version, main_yaml, main_config.platform).unwrap();
+
+            let main_bin: Binary = Binary {
+                symbols: main_symbols,
+                cli_color: BINARY_COLORS[0],
+            };
+
+            for other_yaml in other_yamls {
+                let other_config = read_config(other_yaml.to_path_buf()).unwrap();
+
+                for other_version in &other_config.versions {
+                    let other_symbols =
+                        collect_symbols(other_version, other_yaml, other_config.platform.clone())
+                            .unwrap();
+
+                    let other_bin = Binary {
+                        symbols: other_symbols,
+                        cli_color: BINARY_COLORS[1],
+                    };
+
+                    println!(
+                        "Comparing {} {} to {} {}:",
+                        main_config.name.color(main_bin.cli_color),
+                        main_version.fullname.color(main_bin.cli_color),
+                        other_config.name.color(other_bin.cli_color),
+                        other_version.fullname.color(other_bin.cli_color)
+                    );
+
+                    do_compare_binaries(&main_bin, &other_bin, 0.99, 5);
+                    println!();
+                }
+            }
         }
     }
 }
