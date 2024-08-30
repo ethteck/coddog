@@ -190,18 +190,18 @@ fn get_insns(bytes: &[u8], endianness: Endianness) -> Vec<u8> {
     }
 }
 
-fn get_full_path(config_path: &Path, config: &Version, name: &str) -> Option<PathBuf> {
+fn get_full_path(settings_dir: &Path, config: &Version, name: &str) -> Option<PathBuf> {
     config.paths.get(name).map(|path| {
         if path.is_relative() {
-            config_path.parent().unwrap().join(path)
+            settings_dir.join(path)
         } else {
             path.clone()
         }
     })
 }
 
-fn get_unmatched_funcs(config_path: &Path, config: &Version) -> Option<Vec<String>> {
-    get_full_path(config_path, config, "asm").map(|asm_dir| {
+fn get_unmatched_funcs(settings_dir: &Path, config: &Version) -> Option<Vec<String>> {
+    get_full_path(settings_dir, config, "asm").map(|asm_dir| {
         let mut unmatched_funcs = Vec::new();
 
         for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
@@ -214,10 +214,10 @@ fn get_unmatched_funcs(config_path: &Path, config: &Version) -> Option<Vec<Strin
     })
 }
 
-fn collect_symbols(config: &Version, config_path: &Path, platform: String) -> Result<Vec<Symbol>> {
-    let unmatched_funcs = get_unmatched_funcs(config_path, config);
+fn collect_symbols(config: &Version, settings_dir: &Path, platform: String) -> Result<Vec<Symbol>> {
+    let unmatched_funcs = get_unmatched_funcs(settings_dir, config);
 
-    if let Some(elf_path) = get_full_path(config_path, config, "elf") {
+    if let Some(elf_path) = get_full_path(settings_dir, config, "elf") {
         let elf_data = fs::read(elf_path)?;
         let file = object::File::parse(&*elf_data)?;
 
@@ -256,12 +256,12 @@ fn collect_symbols(config: &Version, config_path: &Path, platform: String) -> Re
     }
 
     if let (Some(baserom_path), Some(map_path)) = (
-        get_full_path(config_path, config, "baserom"),
-        get_full_path(config_path, config, "map"),
+        get_full_path(settings_dir, config, "baserom"),
+        get_full_path(settings_dir, config, "map"),
     ) {
-        let rom_bytes = std::fs::read(baserom_path).unwrap();
+        let rom_bytes = std::fs::read(baserom_path)?;
         let mut mapfile = MapFile::new();
-        mapfile.parse_map_contents(std::fs::read_to_string(map_path).unwrap().as_str());
+        mapfile.parse_map_contents(std::fs::read_to_string(map_path)?.as_str());
 
         let ret: Vec<Symbol> = mapfile
             .segments_list
@@ -339,10 +339,14 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
     }
 }
 
-fn get_cwd_symbols() -> Vec<Symbol> {
-    let config = scan_for_config().unwrap();
+fn get_cwd_symbols() -> Result<Vec<Symbol>> {
+    let config = scan_for_config()?;
     let version = &config.versions[0]; // TODO: allow specifying
-    collect_symbols(version, &std::env::current_dir().unwrap(), config.platform).unwrap()
+    Ok(collect_symbols(
+        version,
+        &std::env::current_dir()?,
+        config.platform,
+    )?)
 }
 
 fn main() {
@@ -350,15 +354,15 @@ fn main() {
 
     match &cli.command {
         Commands::Match { query, threshold } => {
-            let symbols = get_cwd_symbols();
+            let symbols = get_cwd_symbols().unwrap();
             do_match(query, &symbols, *threshold);
         }
         Commands::Submatch { query, window_size } => {
-            let symbols = get_cwd_symbols();
+            let symbols = get_cwd_symbols().unwrap();
             do_submatch(query, &symbols, *window_size);
         }
         Commands::Cluster { threshold, min_len } => {
-            let symbols = get_cwd_symbols();
+            let symbols = get_cwd_symbols().unwrap();
             cluster::do_cluster(&symbols, *threshold, *min_len);
         }
         Commands::Compare2 {
@@ -375,8 +379,10 @@ fn main() {
             let version1 = config1.get_version_by_name(version1).unwrap();
             let version2 = config2.get_version_by_name(version2).unwrap();
 
-            let symbols1 = collect_symbols(&version1, yaml1, config1.platform).unwrap();
-            let symbols2 = collect_symbols(&version2, yaml2, config2.platform).unwrap();
+            let symbols1 =
+                collect_symbols(&version1, yaml1.parent().unwrap(), config1.platform).unwrap();
+            let symbols2 =
+                collect_symbols(&version2, yaml2.parent().unwrap(), config2.platform).unwrap();
 
             let bin1 = Binary {
                 symbols: symbols1,
@@ -397,8 +403,12 @@ fn main() {
         } => {
             let main_config = read_config(main_yaml.to_path_buf()).unwrap();
             let main_version = main_config.get_version_by_name(main_version).unwrap();
-            let main_symbols =
-                collect_symbols(&main_version, main_yaml, main_config.platform).unwrap();
+            let main_symbols = collect_symbols(
+                &main_version,
+                main_yaml.parent().unwrap(),
+                main_config.platform,
+            )
+            .unwrap();
 
             let main_bin: Binary = Binary {
                 symbols: main_symbols,
@@ -409,9 +419,12 @@ fn main() {
                 let other_config = read_config(other_yaml.to_path_buf()).unwrap();
 
                 for other_version in &other_config.versions {
-                    let other_symbols =
-                        collect_symbols(other_version, other_yaml, other_config.platform.clone())
-                            .unwrap();
+                    let other_symbols = collect_symbols(
+                        other_version,
+                        other_yaml.parent().unwrap(),
+                        other_config.platform.clone(),
+                    )
+                    .unwrap();
 
                     let other_bin = Binary {
                         symbols: other_symbols,
