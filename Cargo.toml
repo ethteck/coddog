@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5.16", features = ["derive"] }
+clap = { version = "4.5.17", features = ["derive"] }
 colored = "2.1.0"
 decomp_settings = "0.0.7"
 editdistancek = "1.0.2"

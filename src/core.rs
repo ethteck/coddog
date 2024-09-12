@@ -31,7 +31,7 @@ pub struct Symbol {
 }
 
 impl Symbol {
-    pub fn cli_name(&self) -> String {
+    pub fn cli_fullname(&self) -> String {
         format!(
             "{}{}",
             self.name.clone(),
@@ -44,20 +44,13 @@ impl Symbol {
     }
 
     pub fn cli_name_colored(&self, color: Color) -> String {
-        format!(
-            "{}{}",
-            self.name.clone().color(color),
-            if self.is_decompiled {
-                " (decompiled)".green()
-            } else {
-                "".normal()
-            }
-        )
+        format!("{}", self.name.clone().color(color))
     }
 }
 
 #[derive(Debug)]
 pub struct Binary {
+    pub name: String,
     pub symbols: Vec<Symbol>,
     pub cli_color: Color,
 }

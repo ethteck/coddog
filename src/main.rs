@@ -126,7 +126,7 @@ fn do_match(query: &str, symbols: &[Symbol], threshold: f32) {
     matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
     for m in matches {
-        println!("{:.2}% - {}", m.score * 100.0, m.symbol.cli_name());
+        println!("{:.2}% - {}", m.score * 100.0, m.symbol.cli_fullname());
     }
 }
 
@@ -149,7 +149,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             } else {
                 "99%"
             };
-            println!("{} matches {}", s.cli_name(), match_pct);
+            println!("{} matches {}", s.cli_fullname(), match_pct);
             continue;
         }
 
@@ -161,7 +161,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             continue;
         }
 
-        println!("{}:", s.cli_name());
+        println!("{}:", s.cli_fullname());
 
         for m in pair_matches {
             let query_str = format!("query [{}-{}]", m.offset1, m.offset1 + m.length);
@@ -327,13 +327,73 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
             println!("No matches found");
         }
         _ => {
+            let mut both_decompiled: Vec<(&Symbol, &Symbol, f32)> = vec![];
+            let mut only1_decompiled: Vec<(&Symbol, &Symbol, f32)> = vec![];
+            let mut only2_decompiled: Vec<(&Symbol, &Symbol, f32)> = vec![];
+            let mut both_undecompiled: Vec<(&Symbol, &Symbol, f32)> = vec![];
+
             for (sym1, sym2, score) in matched_syms {
+                if sym1.is_decompiled && sym2.is_decompiled {
+                    both_decompiled.push((sym1, sym2, score));
+                } else if sym1.is_decompiled {
+                    only1_decompiled.push((sym1, sym2, score));
+                } else if sym2.is_decompiled {
+                    only2_decompiled.push((sym1, sym2, score));
+                } else {
+                    both_undecompiled.push((sym1, sym2, score));
+                }
+            }
+
+            if both_decompiled.len() > 0 {
                 println!(
-                    "{} - {} ({:.2}%)",
-                    sym1.cli_name_colored(bin1.cli_color),
-                    sym2.cli_name_colored(bin2.cli_color),
-                    score * 100.0
+                    "\nDecompiled in {} and {}:",
+                    bin1.name.color(bin1.cli_color),
+                    bin2.name.color(bin2.cli_color)
                 );
+                for (sym1, sym2, score) in both_decompiled {
+                    println!(
+                        "{} - {} ({:.2}%)",
+                        sym1.cli_name_colored(bin1.cli_color),
+                        sym2.cli_name_colored(bin2.cli_color),
+                        score * 100.0
+                    );
+                }
+            }
+
+            if only1_decompiled.len() > 0 {
+                println!("\nOnly decompiled in {}:", bin1.name.color(bin1.cli_color));
+                for (sym1, sym2, score) in only1_decompiled {
+                    println!(
+                        "{} - {} ({:.2}%)",
+                        sym1.cli_name_colored(bin1.cli_color),
+                        sym2.cli_name_colored(bin2.cli_color),
+                        score * 100.0
+                    );
+                }
+            }
+
+            if only2_decompiled.len() > 0 {
+                println!("\nOnly decompiled in {}:", bin2.name.color(bin2.cli_color));
+                for (sym1, sym2, score) in only2_decompiled {
+                    println!(
+                        "{} - {} ({:.2}%)",
+                        sym1.cli_name_colored(bin1.cli_color),
+                        sym2.cli_name_colored(bin2.cli_color),
+                        score * 100.0
+                    );
+                }
+            }
+
+            if both_undecompiled.len() > 0 {
+                println!("\nDecompiled in neither:");
+                for (sym1, sym2, score) in both_undecompiled {
+                    println!(
+                        "{} - {} ({:.2}%)",
+                        sym1.cli_name_colored(bin1.cli_color),
+                        sym2.cli_name_colored(bin2.cli_color),
+                        score * 100.0
+                    );
+                }
             }
         }
     }
@@ -385,11 +445,13 @@ fn main() {
                 collect_symbols(&version2, yaml2.parent().unwrap(), config2.platform).unwrap();
 
             let bin1 = Binary {
+                name: config1.name,
                 symbols: symbols1,
                 cli_color: BINARY_COLORS[0],
             };
 
             let bin2 = Binary {
+                name: config2.name,
                 symbols: symbols2,
                 cli_color: BINARY_COLORS[1],
             };
@@ -411,6 +473,7 @@ fn main() {
             .unwrap();
 
             let main_bin: Binary = Binary {
+                name: main_config.name.clone(),
                 symbols: main_symbols,
                 cli_color: BINARY_COLORS[0],
             };
@@ -427,6 +490,7 @@ fn main() {
                     .unwrap();
 
                     let other_bin = Binary {
+                        name: other_config.name.clone(),
                         symbols: other_symbols,
                         cli_color: BINARY_COLORS[1],
                     };
