@@ -344,7 +344,7 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 }
             }
 
-            if both_decompiled.len() > 0 {
+            if !both_decompiled.is_empty() {
                 println!(
                     "\nDecompiled in {} and {}:",
                     bin1.name.color(bin1.cli_color),
@@ -360,7 +360,7 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 }
             }
 
-            if only1_decompiled.len() > 0 {
+            if !only1_decompiled.is_empty() {
                 println!("\nOnly decompiled in {}:", bin1.name.color(bin1.cli_color));
                 for (sym1, sym2, score) in only1_decompiled {
                     println!(
@@ -372,7 +372,7 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 }
             }
 
-            if only2_decompiled.len() > 0 {
+            if !only2_decompiled.is_empty() {
                 println!("\nOnly decompiled in {}:", bin2.name.color(bin2.cli_color));
                 for (sym1, sym2, score) in only2_decompiled {
                     println!(
@@ -384,7 +384,7 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 }
             }
 
-            if both_undecompiled.len() > 0 {
+            if !both_undecompiled.is_empty() {
                 println!("\nDecompiled in neither:");
                 for (sym1, sym2, score) in both_undecompiled {
                     println!(
