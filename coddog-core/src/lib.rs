@@ -1,4 +1,9 @@
-use crate::*;
+pub mod cluster;
+pub mod ingest;
+
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+use editdistancek::edit_distance_bounded;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Endianness {
@@ -30,29 +35,10 @@ pub struct Symbol {
     pub is_decompiled: bool,
 }
 
-impl Symbol {
-    pub fn cli_fullname(&self) -> String {
-        format!(
-            "{}{}",
-            self.name.clone(),
-            if self.is_decompiled {
-                " (decompiled)".green()
-            } else {
-                "".normal()
-            }
-        )
-    }
-
-    pub fn cli_name_colored(&self, color: Color) -> String {
-        format!("{}", self.name.clone().color(color))
-    }
-}
-
 #[derive(Debug)]
 pub struct Binary {
     pub name: String,
     pub symbols: Vec<Symbol>,
-    pub cli_color: Color,
 }
 
 #[derive(Debug, Clone, Copy)]

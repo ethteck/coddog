@@ -1,21 +1,18 @@
 use anyhow::{Ok, Result};
 use clap::{Parser, Subcommand};
 use colored::*;
-use core::{get_hashes, get_submatches, Binary, Endianness, Symbol};
 use decomp_settings::{config::Version, read_config, scan_for_config};
-use editdistancek::edit_distance_bounded;
 use glob::glob;
-use mapfile_parser::MapFile;
-use object::{Object, ObjectSection, ObjectSymbol};
 use std::{
-    collections::hash_map::DefaultHasher,
     fs,
-    hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
-mod cluster;
-mod core;
+use coddog_core::{
+    self as core, cluster, get_hashes, get_submatches,
+    ingest::{read_elf, read_map},
+    Binary, Symbol,
+};
 
 const BINARY_COLORS: [Color; 6] = [
     Color::BrightGreen,
@@ -106,6 +103,22 @@ struct FunctionMatch<'a> {
     score: f32,
 }
 
+fn cli_fullname(sym: &Symbol) -> String {
+    format!(
+        "{}{}",
+        sym.name.clone(),
+        if sym.is_decompiled {
+            " (decompiled)".green()
+        } else {
+            "".normal()
+        }
+    )
+}
+
+fn cli_name_colored(sym: &Symbol, color: Color) -> String {
+    format!("{}", sym.name.clone().color(color))
+}
+
 fn do_match(query: &str, symbols: &[Symbol], threshold: f32) {
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
@@ -126,7 +139,7 @@ fn do_match(query: &str, symbols: &[Symbol], threshold: f32) {
     matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
     for m in matches {
-        println!("{:.2}% - {}", m.score * 100.0, m.symbol.cli_fullname());
+        println!("{:.2}% - {}", m.score * 100.0, cli_fullname(m.symbol));
     }
 }
 
@@ -149,7 +162,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             } else {
                 "99%"
             };
-            println!("{} matches {}", s.cli_fullname(), match_pct);
+            println!("{} matches {}", cli_fullname(s), match_pct);
             continue;
         }
 
@@ -161,7 +174,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             continue;
         }
 
-        println!("{}:", s.cli_fullname());
+        println!("{}:", cli_fullname(s));
 
         for m in pair_matches {
             let query_str = format!("query [{}-{}]", m.offset1, m.offset1 + m.length);
@@ -174,19 +187,6 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             );
             println!("\t{query_str} matches {target_str}");
         }
-    }
-}
-
-fn get_insns(bytes: &[u8], endianness: Endianness) -> Vec<u8> {
-    // Remove trailing nops
-    let mut bs = bytes.to_vec();
-    while !bs.is_empty() && bs[bs.len() - 1] == 0 {
-        bs.pop();
-    }
-
-    match endianness {
-        Endianness::Little => bs.iter().step_by(4).map(|x| x >> 2).collect(),
-        Endianness::Big => bs.iter().skip(3).step_by(4).map(|x| x >> 2).collect(),
     }
 }
 
@@ -219,40 +219,7 @@ fn collect_symbols(config: &Version, settings_dir: &Path, platform: String) -> R
 
     if let Some(elf_path) = get_full_path(settings_dir, config, "elf") {
         let elf_data = fs::read(elf_path)?;
-        let file = object::File::parse(&*elf_data)?;
-
-        let ret: Vec<Symbol> = file
-            .symbols()
-            .filter(|s| s.kind() == object::SymbolKind::Text)
-            .filter_map(|symbol| {
-                symbol.section_index().and_then(|i| {
-                    file.section_by_index(i)
-                        .ok()
-                        .map(|section| (symbol, section))
-                })
-            })
-            .filter_map(|(symbol, section)| {
-                section
-                    .data_range(symbol.address(), symbol.size())
-                    .ok()
-                    .flatten()
-                    .map(|data| (symbol, data))
-            })
-            .map(|(symbol, data)| {
-                let insns: Vec<u8> = get_insns(data, Endianness::from_platform(&platform));
-                Symbol {
-                    id: 0,
-                    name: symbol.name().unwrap().to_string(),
-                    bytes: data.to_vec(),
-                    insns,
-                    is_decompiled: unmatched_funcs
-                        .as_ref()
-                        .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
-                }
-            })
-            .collect();
-
-        return Ok(ret);
+        return read_elf(&platform, &unmatched_funcs, elf_data);
     }
 
     if let (Some(baserom_path), Some(map_path)) = (
@@ -260,36 +227,7 @@ fn collect_symbols(config: &Version, settings_dir: &Path, platform: String) -> R
         get_full_path(settings_dir, config, "map"),
     ) {
         let rom_bytes = std::fs::read(baserom_path)?;
-        let mut mapfile = MapFile::new();
-        mapfile.parse_map_contents(std::fs::read_to_string(map_path)?.as_str());
-
-        let ret: Vec<Symbol> = mapfile
-            .segments_list
-            .iter()
-            .flat_map(|x| x.files_list.iter())
-            .filter(|x| x.section_type == ".text")
-            .flat_map(|x| x.symbols.iter())
-            .filter(|x| x.vrom.is_some() && x.size.is_some())
-            .enumerate()
-            .map(|(id, x)| {
-                let start = x.vrom.unwrap() as usize;
-                let end = start + x.size.unwrap() as usize;
-                let raw = &rom_bytes[start..end];
-                let insns = get_insns(raw, Endianness::from_platform(&platform));
-
-                Symbol {
-                    id,
-                    name: x.name.clone(),
-                    bytes: raw.to_vec(),
-                    insns,
-                    is_decompiled: unmatched_funcs
-                        .as_ref()
-                        .is_some_and(|fs| !fs.contains(&x.name)),
-                }
-            })
-            .collect();
-
-        return Ok(ret);
+        return read_map(platform, unmatched_funcs, rom_bytes, map_path);
     }
 
     panic!("No elf or mapfile found");
@@ -347,38 +285,44 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
             if !both_decompiled.is_empty() {
                 println!(
                     "\nDecompiled in {} and {}:",
-                    bin1.name.color(bin1.cli_color),
-                    bin2.name.color(bin2.cli_color)
+                    bin1.name.color(BINARY_COLORS[0]),
+                    bin2.name.color(BINARY_COLORS[1])
                 );
                 for (sym1, sym2, score) in both_decompiled {
                     println!(
                         "{} - {} ({:.2}%)",
-                        sym1.cli_name_colored(bin1.cli_color),
-                        sym2.cli_name_colored(bin2.cli_color),
+                        cli_name_colored(sym1, BINARY_COLORS[0]),
+                        cli_name_colored(sym2, BINARY_COLORS[1]),
                         score * 100.0
                     );
                 }
             }
 
             if !only1_decompiled.is_empty() {
-                println!("\nOnly decompiled in {}:", bin1.name.color(bin1.cli_color));
+                println!(
+                    "\nOnly decompiled in {}:",
+                    bin1.name.color(BINARY_COLORS[0])
+                );
                 for (sym1, sym2, score) in only1_decompiled {
                     println!(
                         "{} - {} ({:.2}%)",
-                        sym1.cli_name_colored(bin1.cli_color),
-                        sym2.cli_name_colored(bin2.cli_color),
+                        cli_name_colored(sym1, BINARY_COLORS[0]),
+                        cli_name_colored(sym2, BINARY_COLORS[1]),
                         score * 100.0
                     );
                 }
             }
 
             if !only2_decompiled.is_empty() {
-                println!("\nOnly decompiled in {}:", bin2.name.color(bin2.cli_color));
+                println!(
+                    "\nOnly decompiled in {}:",
+                    bin2.name.color(BINARY_COLORS[1])
+                );
                 for (sym1, sym2, score) in only2_decompiled {
                     println!(
                         "{} - {} ({:.2}%)",
-                        sym1.cli_name_colored(bin1.cli_color),
-                        sym2.cli_name_colored(bin2.cli_color),
+                        cli_name_colored(sym1, BINARY_COLORS[0]),
+                        cli_name_colored(sym2, BINARY_COLORS[1]),
                         score * 100.0
                     );
                 }
@@ -389,8 +333,8 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 for (sym1, sym2, score) in both_undecompiled {
                     println!(
                         "{} - {} ({:.2}%)",
-                        sym1.cli_name_colored(bin1.cli_color),
-                        sym2.cli_name_colored(bin2.cli_color),
+                        cli_name_colored(sym1, BINARY_COLORS[0]),
+                        cli_name_colored(sym2, BINARY_COLORS[1]),
                         score * 100.0
                     );
                 }
@@ -447,13 +391,11 @@ fn main() {
             let bin1 = Binary {
                 name: config1.name,
                 symbols: symbols1,
-                cli_color: BINARY_COLORS[0],
             };
 
             let bin2 = Binary {
                 name: config2.name,
                 symbols: symbols2,
-                cli_color: BINARY_COLORS[1],
             };
 
             do_compare_binaries(&bin1, &bin2, *threshold, *min_len);
@@ -475,7 +417,6 @@ fn main() {
             let main_bin: Binary = Binary {
                 name: main_config.name.clone(),
                 symbols: main_symbols,
-                cli_color: BINARY_COLORS[0],
             };
 
             for other_yaml in other_yamls {
@@ -492,15 +433,14 @@ fn main() {
                     let other_bin = Binary {
                         name: other_config.name.clone(),
                         symbols: other_symbols,
-                        cli_color: BINARY_COLORS[1],
                     };
 
                     println!(
                         "Comparing {} {} to {} {}:",
-                        main_config.name.color(main_bin.cli_color),
-                        main_version.fullname.color(main_bin.cli_color),
-                        other_config.name.color(other_bin.cli_color),
-                        other_version.fullname.color(other_bin.cli_color)
+                        main_config.name.color(BINARY_COLORS[0]),
+                        main_version.fullname.color(BINARY_COLORS[0]),
+                        other_config.name.color(BINARY_COLORS[1]),
+                        other_version.fullname.color(BINARY_COLORS[1])
                     );
 
                     do_compare_binaries(&main_bin, &other_bin, 0.99, 5);

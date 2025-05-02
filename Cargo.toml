@@ -1,14 +1,10 @@
-[package]
-name = "coddog"
-version = "0.4.0"
-edition = "2021"
+[workspace]
+members = ["coddog-core", "coddog-cli"]
+resolver = "2"
 
-[dependencies]
-anyhow = "1.0"
-clap = { version = "4.5.28", features = ["derive"] }
-colored = "3.0.0"
-decomp_settings = "0.0.7"
-editdistancek = "1.0.2"
-glob = "0.3.2"
-mapfile_parser = "2.7.2"
-object = "0.36.7"
+[workspace.package]
+version = "0.4.0"
+authors = ["Ethan Roseman <ethteck@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/etheteck/coddog"
