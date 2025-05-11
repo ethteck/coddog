@@ -4,10 +4,10 @@ use anyhow::Result;
 use mapfile_parser::MapFile;
 use object::{Object, ObjectSection, ObjectSymbol};
 
-use crate::{Endianness, Symbol};
+use crate::{Endianness, Platform, Symbol};
 
 pub fn read_elf(
-    platform: &str,
+    platform: &Platform,
     unmatched_funcs: &Option<Vec<String>>,
     elf_data: Vec<u8>,
 ) -> Result<Vec<Symbol>> {
@@ -27,15 +27,25 @@ pub fn read_elf(
                 .data_range(symbol.address(), symbol.size())
                 .ok()
                 .flatten()
-                .map(|data| (symbol, data))
+                .map(|data| {
+                    (
+                        symbol,
+                        data,
+                        section.address(),
+                        section.file_range().unwrap().0,
+                    )
+                })
         })
-        .map(|(symbol, data)| {
-            let insns: Vec<u8> = get_mips_insns(data, Endianness::from_platform(platform));
+        .map(|(symbol, data, section_address, section_offset)| {
+            let insns: Vec<u8> = get_mips_insns(data, platform.endianness());
+            let offset = symbol.address() - section_address + section_offset;
+
             Symbol {
                 id: 0,
                 name: symbol.name().unwrap().to_string(),
                 bytes: data.to_vec(),
                 insns,
+                offset: offset as usize,
                 is_decompiled: unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
@@ -59,7 +69,7 @@ fn get_mips_insns(bytes: &[u8], endianness: Endianness) -> Vec<u8> {
 }
 
 pub fn read_map(
-    platform: String,
+    platform: &Platform,
     unmatched_funcs: Option<Vec<String>>,
     rom_bytes: Vec<u8>,
     map_path: PathBuf,
@@ -78,13 +88,14 @@ pub fn read_map(
             let start = x.vrom.unwrap() as usize;
             let end = start + x.size.unwrap() as usize;
             let raw = &rom_bytes[start..end];
-            let insns = get_mips_insns(raw, Endianness::from_platform(&platform));
+            let insns = get_mips_insns(raw, platform.endianness());
 
             Symbol {
                 id,
                 name: x.name.clone(),
                 bytes: raw.to_vec(),
                 insns,
+                offset: start,
                 is_decompiled: unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&x.name)),

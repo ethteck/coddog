@@ -11,12 +11,42 @@ pub enum Endianness {
     Big,
 }
 
-impl Endianness {
-    pub fn from_platform(platform: &str) -> Self {
-        match platform {
-            "n64" => Endianness::Big,
-            "ps2" => Endianness::Little,
-            _ => panic!("Unknown platform {}", platform),
+#[derive(Debug, Clone, Copy)]
+pub enum Arch {
+    Unknown,
+    Mips,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Platform {
+    N64,
+    PSX,
+    PS2,
+}
+
+impl Platform {
+    pub fn of(name: &str) -> Option<Self> {
+        match name.to_lowercase().as_str() {
+            "n64" => Some(Platform::N64),
+            "psx" => Some(Platform::PSX),
+            "ps2" => Some(Platform::PS2),
+            _ => None,
+        }
+    }
+
+    pub fn endianness(self: &Self) -> Endianness {
+        match self {
+            Platform::N64 => Endianness::Big,
+            Platform::PSX => Endianness::Little,
+            Platform::PS2 => Endianness::Little,
+        }
+    }
+
+    pub fn arch(self: &Self) -> Arch {
+        match self {
+            Platform::N64 => Arch::Mips,
+            Platform::PSX => Arch::Mips,
+            Platform::PS2 => Arch::Mips,
         }
     }
 }
@@ -31,6 +61,8 @@ pub struct Symbol {
     pub bytes: Vec<u8>,
     /// the symbol's instructions, normalized to essentially just opcodes
     pub insns: Vec<u8>,
+    /// the file offset of the symbol
+    pub offset: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
 }

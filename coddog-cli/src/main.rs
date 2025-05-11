@@ -1,8 +1,13 @@
-use anyhow::{Ok, Result};
+pub mod db;
+
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::*;
+use db::db_init;
 use decomp_settings::{config::Version, read_config, scan_for_config};
+use dotenvy::dotenv;
 use glob::glob;
+use pbr::ProgressBar;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -11,7 +16,7 @@ use std::{
 use coddog_core::{
     self as core, cluster, get_hashes, get_submatches,
     ingest::{read_elf, read_map},
-    Binary, Symbol,
+    Binary, Platform, Symbol,
 };
 
 const BINARY_COLORS: [Color; 6] = [
@@ -31,6 +36,7 @@ struct Cli {
     command: Commands,
 }
 #[derive(Subcommand)]
+
 enum Commands {
     /// Find functions similar to the query function
     Match {
@@ -95,6 +101,20 @@ enum Commands {
 
         /// Path to other projects' decomp.yaml files
         other_yamls: Vec<PathBuf>,
+    },
+
+    /// Database management commands
+    #[command(subcommand)]
+    Db(DbCommands),
+}
+
+#[derive(Subcommand)]
+enum DbCommands {
+    /// Initialize the database
+    Init,
+    AddProject {
+        /// Path to the decomp.yaml file
+        yaml: PathBuf,
     },
 }
 
@@ -190,18 +210,18 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
     }
 }
 
-fn get_full_path(settings_dir: &Path, config: &Version, name: &str) -> Option<PathBuf> {
+fn get_full_path(base_dir: &Path, config: &Version, name: &str) -> Option<PathBuf> {
     config.paths.get(name).map(|path| {
         if path.is_relative() {
-            settings_dir.join(path)
+            base_dir.join(path)
         } else {
             path.clone()
         }
     })
 }
 
-fn get_unmatched_funcs(settings_dir: &Path, config: &Version) -> Option<Vec<String>> {
-    get_full_path(settings_dir, config, "asm").map(|asm_dir| {
+fn get_unmatched_funcs(base_dir: &Path, config: &Version) -> Option<Vec<String>> {
+    get_full_path(base_dir, config, "asm").map(|asm_dir| {
         let mut unmatched_funcs = Vec::new();
 
         for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
@@ -214,20 +234,22 @@ fn get_unmatched_funcs(settings_dir: &Path, config: &Version) -> Option<Vec<Stri
     })
 }
 
-fn collect_symbols(config: &Version, settings_dir: &Path, platform: String) -> Result<Vec<Symbol>> {
-    let unmatched_funcs = get_unmatched_funcs(settings_dir, config);
+fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<Vec<Symbol>> {
+    let unmatched_funcs = get_unmatched_funcs(base_dir, config);
+    let platform =
+        Platform::of(platform).expect(format!("Invalid platform: {}", platform).as_str());
 
-    if let Some(elf_path) = get_full_path(settings_dir, config, "elf") {
+    if let Some(elf_path) = get_full_path(base_dir, config, "elf") {
         let elf_data = fs::read(elf_path)?;
         return read_elf(&platform, &unmatched_funcs, elf_data);
     }
 
     if let (Some(baserom_path), Some(map_path)) = (
-        get_full_path(settings_dir, config, "baserom"),
-        get_full_path(settings_dir, config, "map"),
+        get_full_path(base_dir, config, "baserom"),
+        get_full_path(base_dir, config, "map"),
     ) {
         let rom_bytes = std::fs::read(baserom_path)?;
-        return read_map(platform, unmatched_funcs, rom_bytes, map_path);
+        return read_map(&platform, unmatched_funcs, rom_bytes, map_path);
     }
 
     panic!("No elf or mapfile found");
@@ -349,11 +371,13 @@ fn get_cwd_symbols() -> Result<Vec<Symbol>> {
     Ok(collect_symbols(
         version,
         &std::env::current_dir()?,
-        config.platform,
+        &config.platform,
     )?)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    dotenv().ok();
     let cli: Cli = Cli::parse();
 
     match &cli.command {
@@ -384,9 +408,9 @@ fn main() {
             let version2 = config2.get_version_by_name(version2).unwrap();
 
             let symbols1 =
-                collect_symbols(&version1, yaml1.parent().unwrap(), config1.platform).unwrap();
+                collect_symbols(&version1, yaml1.parent().unwrap(), &config1.platform).unwrap();
             let symbols2 =
-                collect_symbols(&version2, yaml2.parent().unwrap(), config2.platform).unwrap();
+                collect_symbols(&version2, yaml2.parent().unwrap(), &config2.platform).unwrap();
 
             let bin1 = Binary {
                 name: config1.name,
@@ -410,7 +434,7 @@ fn main() {
             let main_symbols = collect_symbols(
                 &main_version,
                 main_yaml.parent().unwrap(),
-                main_config.platform,
+                &main_config.platform,
             )
             .unwrap();
 
@@ -426,7 +450,7 @@ fn main() {
                     let other_symbols = collect_symbols(
                         other_version,
                         other_yaml.parent().unwrap(),
-                        other_config.platform.clone(),
+                        &other_config.platform.clone(),
                     )
                     .unwrap();
 
@@ -446,6 +470,53 @@ fn main() {
                     do_compare_binaries(&main_bin, &other_bin, 0.99, 5);
                     println!();
                 }
+            }
+        }
+        Commands::Db(DbCommands::Init) => match db_init().await {
+            Ok(_) => println!("Database initialized"),
+            Err(e) => println!("Error initializing database: {}", e),
+        },
+        Commands::Db(DbCommands::AddProject { yaml }) => {
+            let config = read_config(yaml.to_path_buf()).unwrap();
+            let platform = Platform::of(&config.platform).unwrap();
+
+            let pool = db::db_init().await.unwrap();
+            let project_id = db::add_project(pool.clone(), &config.name, platform)
+                .await
+                .unwrap();
+
+            println!("Imported project {} with id {}", config.name, project_id);
+
+            for version in &config.versions {
+                let baserom_path =
+                    get_full_path(yaml.parent().unwrap(), version, "baserom").unwrap();
+                let source_id =
+                    db::add_source(pool.clone(), project_id, &version.fullname, &baserom_path)
+                        .await
+                        .unwrap();
+
+                let symbols =
+                    collect_symbols(version, yaml.parent().unwrap(), &config.platform).unwrap();
+
+                let symbol_ids = db::add_symbols(pool.clone(), source_id, &symbols).await;
+
+                println!("Importing symbols' hashes for version {}", version.fullname);
+
+                let mut pb = ProgressBar::new(symbols.len() as u64);
+                pb.format("[=>-]");
+
+                let mut tx = pool.begin().await.unwrap();
+
+                for (symbol, id) in symbols.iter().zip(symbol_ids) {
+                    pb.inc();
+
+                    let window_size = 5;
+                    db::add_symbol_hashes(&mut tx, id, &get_hashes(&symbol, window_size))
+                        .await
+                        .unwrap();
+                }
+
+                tx.commit().await.unwrap();
             }
         }
     }
