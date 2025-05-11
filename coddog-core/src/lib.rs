@@ -34,7 +34,7 @@ impl Platform {
         }
     }
 
-    pub fn endianness(self: &Self) -> Endianness {
+    pub fn endianness(&self) -> Endianness {
         match self {
             Platform::N64 => Endianness::Big,
             Platform::PSX => Endianness::Little,
@@ -42,7 +42,7 @@ impl Platform {
         }
     }
 
-    pub fn arch(self: &Self) -> Arch {
+    pub fn arch(&self) -> Arch {
         match self {
             Platform::N64 => Arch::Mips,
             Platform::PSX => Arch::Mips,
