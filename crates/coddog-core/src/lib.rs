@@ -1,35 +1,36 @@
 pub mod cluster;
 pub mod ingest;
+pub mod instructions;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use editdistancek::edit_distance_bounded;
-
-#[derive(Debug, Clone, Copy)]
-pub enum Endianness {
-    Little,
-    Big,
-}
+use object::Endianness;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Arch {
     Unknown,
     Mips,
+    Ppc,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Platform {
     N64,
-    PSX,
-    PS2,
+    Psx,
+    Ps2,
+    Gc,
+    Wii,
 }
 
 impl Platform {
     pub fn of(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "n64" => Some(Platform::N64),
-            "psx" => Some(Platform::PSX),
-            "ps2" => Some(Platform::PS2),
+            "psx" => Some(Platform::Psx),
+            "ps2" => Some(Platform::Ps2),
+            "gc" => Some(Platform::Gc),
+            "wii" => Some(Platform::Wii),
             _ => None,
         }
     }
@@ -37,16 +38,20 @@ impl Platform {
     pub fn endianness(&self) -> Endianness {
         match self {
             Platform::N64 => Endianness::Big,
-            Platform::PSX => Endianness::Little,
-            Platform::PS2 => Endianness::Little,
+            Platform::Psx => Endianness::Little,
+            Platform::Ps2 => Endianness::Little,
+            Platform::Gc => Endianness::Big,
+            Platform::Wii => Endianness::Big,
         }
     }
 
     pub fn arch(&self) -> Arch {
         match self {
             Platform::N64 => Arch::Mips,
-            Platform::PSX => Arch::Mips,
-            Platform::PS2 => Arch::Mips,
+            Platform::Psx => Arch::Mips,
+            Platform::Ps2 => Arch::Mips,
+            Platform::Gc => Arch::Ppc,
+            Platform::Wii => Arch::Ppc,
         }
     }
 }
@@ -60,7 +65,7 @@ pub struct Symbol {
     /// the raw bytes of the symbol
     pub bytes: Vec<u8>,
     /// the symbol's instructions, normalized to essentially just opcodes
-    pub insns: Vec<u8>,
+    pub insns: Vec<u16>,
     /// the file offset of the symbol
     pub offset: usize,
     /// whether the symbol is decompiled
@@ -89,7 +94,7 @@ impl Symbol {
         id: usize,
         name: String,
         bytes: Vec<u8>,
-        insns: Vec<u8>,
+        insns: Vec<u16>,
         offset: usize,
         is_decompiled: bool,
     ) -> Symbol {
@@ -187,8 +192,11 @@ pub fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
         return 0.0;
     }
 
+    let sym1_insns_u8: Vec<u8> = sym1.insns.iter().flat_map(|&x| x.to_be_bytes()).collect();
+    let sym2_insns_u8: Vec<u8> = sym2.insns.iter().flat_map(|&x| x.to_be_bytes()).collect();
+
     let bound = (max_edit_dist - (max_edit_dist * threshold)) as usize;
-    if let Some(edit_distance) = edit_distance_bounded(&sym1.insns, &sym2.insns, bound) {
+    if let Some(edit_distance) = edit_distance_bounded(&sym1_insns_u8, &sym2_insns_u8, bound) {
         let edit_dist = edit_distance as f32;
         let normalized_edit_dist = (max_edit_dist - edit_dist) / max_edit_dist;
 

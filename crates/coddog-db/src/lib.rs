@@ -1,7 +1,9 @@
-use crate::*;
+use anyhow::Result;
+use coddog_core::{Platform, Symbol};
 use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
 use std::fmt::{Display, Formatter};
-use std::{fs::File, io::Read};
+use std::path::{Path, PathBuf};
+use std::{fs, fs::File, io::Read};
 
 const CHUNK_SIZE: usize = 100000;
 
@@ -20,7 +22,7 @@ pub async fn db_init() -> Result<PgPool> {
 
     let pool = PgPool::connect(&db_path).await?;
 
-    let migration_results = sqlx::migrate!("../migrations").run(&pool).await;
+    let migration_results = sqlx::migrate!("./migrations").run(&pool).await;
 
     match migration_results {
         Ok(_) => Ok(pool),
@@ -66,9 +68,9 @@ pub async fn add_source(
         name,
         target_path.to_str().unwrap(),
     )
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(anyhow::Error::from)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(anyhow::Error::from)
     {
         Ok(r) => {
             fs::create_dir_all(target_path.parent().unwrap())?; // Ensure the target directory exists
@@ -77,7 +79,7 @@ pub async fn add_source(
                 Err(e) => Err(anyhow::anyhow!("Error copying file: {}", e)),
             }
         }
-        Err(e) => Err(anyhow::anyhow!("Error adding source to database: {}", e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -119,9 +121,9 @@ pub async fn add_symbols(
             &fuzzy_hashes,
             &exact_hashes,
         )
-        .fetch_all(&mut **tx)
-        .await
-        .unwrap();
+            .fetch_all(&mut **tx)
+            .await
+            .unwrap();
 
         for row in rows {
             ret.push(row.id);
@@ -133,8 +135,8 @@ pub async fn add_symbols(
 
 pub async fn add_symbol_window_hashes(
     tx: &mut Transaction<'_, Postgres>,
-    symbol_id: i64,
     hashes: &[u64],
+    symbol_id: i64,
 ) -> Result<()> {
     let hashes_enumerated: Vec<(usize, &u64)> = hashes.iter().enumerate().collect();
 
@@ -145,12 +147,12 @@ pub async fn add_symbol_window_hashes(
 
         let r = sqlx::query!(
             "
-                INSERT INTO windows (symbol_id, pos, hash)
-                SELECT * FROM UNNEST($1::bigint[], $2::int[], $3::bigint[])
+                INSERT INTO windows (pos, hash, symbol_id)
+                SELECT * FROM UNNEST($1::int[], $2::bigint[], $3::bigint[])
         ",
-            &symbol_ids as &[i64],
             &poses as &[i64],
             &fuzzy_hashes as &[i64],
+            &symbol_ids as &[i64],
         )
         .execute(&mut **tx)
         .await;
@@ -165,32 +167,34 @@ pub async fn add_symbol_window_hashes(
 #[derive(Clone, Debug)]
 pub struct DBSymbol {
     pub id: i64,
-    pub source_id: i64,
     pub pos: i64,
     pub name: String,
-    pub project: String,
-    pub version: String,
     pub fuzzy_hash: i64,
     pub exact_hash: i64,
+    pub source_id: i64,
+    pub source_name: String,
+    pub project_id: i64,
+    pub project_name: String,
 }
 
 impl Display for DBSymbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{} version {} (offset {:X})",
-            self.project, self.version, self.pos,
+            self.project_name, self.source_name, self.pos,
         ))
     }
 }
 
 pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
-        "SELECT symbols.id, symbols.source_id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash,
-        projects.name AS project, sources.name AS version
+        "
+    SELECT symbols.id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash, symbols.source_id,
+           sources.name AS source_name, projects.name AS project_name, projects.id as project_id
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
     INNER JOIN projects on sources.project_id = projects.id
-                                             WHERE symbols.name = $1",
+    WHERE symbols.name = $1",
         query
     )
     .fetch_all(&conn)
@@ -200,13 +204,14 @@ pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Resu
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
-            source_id: row.source_id,
             pos: row.pos,
             name: query.to_string(),
             fuzzy_hash: row.fuzzy_hash,
             exact_hash: row.exact_hash,
-            project: row.project.clone(),
-            version: row.version.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            project_id: row.project_id,
+            project_name: row.project_name.clone(),
         })
         .collect();
 
@@ -215,17 +220,19 @@ pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Resu
 
 pub async fn db_query_symbols_by_fuzzy_hash(
     conn: Pool<Postgres>,
-    hash: i64,
+    symbol: &DBSymbol,
 ) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-SELECT symbols.id, symbols.source_id, symbols.pos, symbols.name, symbols.fuzzy_hash, 
-       symbols.exact_hash, sources.name AS version, projects.name AS project
-FROM symbols
-INNER JOIN sources ON sources.id = symbols.source_id
-INNER JOIN projects on sources.project_id = projects.id
-WHERE symbols.fuzzy_hash = $1",
-        hash
+    SELECT symbols.id, symbols.pos, symbols.name, symbols.fuzzy_hash, symbols.exact_hash, 
+           symbols.source_id,
+            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
+        FROM symbols
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN projects on sources.project_id = projects.id
+    WHERE symbols.fuzzy_hash = $1 AND NOT symbols.id = $2",
+        symbol.fuzzy_hash as i64,
+        symbol.id as i64
     )
     .fetch_all(&conn)
     .await?;
@@ -234,13 +241,14 @@ WHERE symbols.fuzzy_hash = $1",
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
-            source_id: row.source_id,
             pos: row.pos,
             name: row.name.to_string(),
             fuzzy_hash: row.fuzzy_hash,
             exact_hash: row.exact_hash,
-            project: row.project.clone(),
-            version: row.version.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            project_id: row.project_id,
+            project_name: row.project_name.clone(),
         })
         .collect();
 
@@ -260,7 +268,7 @@ pub async fn db_query_windows_by_symbol_id_fuzzy(
     Ok(res)
 }
 
-pub struct HashResult {
+pub struct DBWindow {
     pub id: i64,
     pub pos: i32,
     pub symbol_id: i64,
@@ -274,7 +282,7 @@ pub async fn db_query_windows_by_symbol_hashes_fuzzy(
     conn: Pool<Postgres>,
     hashes: &[i64],
     symbol_id: i64,
-) -> Result<Vec<HashResult>> {
+) -> Result<Vec<DBWindow>> {
     let rows = sqlx::query!(
         "
     SELECT windows.id AS hash_id, symbols.id AS symbol_id, source_id, windows.pos,
@@ -292,9 +300,9 @@ pub async fn db_query_windows_by_symbol_hashes_fuzzy(
     .fetch_all(&conn)
     .await?;
 
-    let res: Vec<HashResult> = rows
+    let res: Vec<DBWindow> = rows
         .iter()
-        .map(|row| HashResult {
+        .map(|row| DBWindow {
             id: row.hash_id,
             pos: row.pos,
             symbol_id: row.symbol_id,

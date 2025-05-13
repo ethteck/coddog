@@ -1,5 +1,5 @@
 [workspace]
-members = ["coddog-core", "coddog-cli"]
+members = ["crates/coddog-db", "crates/coddog-core", "crates/coddog-cli"]
 resolver = "2"
 
 [workspace.package]

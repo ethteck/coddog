@@ -251,9 +251,9 @@ name = "coddog-cli"
 version = "0.4.0"
 dependencies = [
  "anyhow",
- "blake3",
  "clap",
  "coddog-core",
+ "coddog-db",
  "colored",
  "decomp_settings",
  "dotenvy",
@@ -272,6 +272,19 @@ dependencies = [
  "editdistancek",
  "mapfile_parser",
  "object",
+ "ppc750cl",
+]
+
+[[package]]
+name = "coddog-db"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "coddog-core",
+ "dotenvy",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
@@ -1186,6 +1199,12 @@ checksum = "e5a7c30837279ca13e7c867e9e40053bc68740f988cb07f7ca6df43cc734b585"
 dependencies = [
  "zerovec",
 ]
+
+[[package]]
+name = "ppc750cl"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be8e5b9d48ab30323e8ece6d655d20fc16a570e4f1af0de6890d3e9ebd284ba0"
 
 [[package]]
 name = "ppv-lite86"

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT symbols.id, symbols.source_id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash,\n        projects.name AS project, sources.name AS version\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n                                             WHERE symbols.name = $1",
+  "query": "\n    SELECT symbols.id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name = $1",
   "describe": {
     "columns": [
       {
@@ -10,33 +10,38 @@
       },
       {
         "ordinal": 1,
-        "name": "source_id",
-        "type_info": "Int8"
-      },
-      {
-        "ordinal": 2,
         "name": "pos",
         "type_info": "Int8"
       },
       {
-        "ordinal": 3,
+        "ordinal": 2,
         "name": "fuzzy_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "exact_hash",
         "type_info": "Int8"
       },
       {
+        "ordinal": 4,
+        "name": "source_id",
+        "type_info": "Int8"
+      },
+      {
         "ordinal": 5,
-        "name": "project",
+        "name": "source_name",
         "type_info": "Text"
       },
       {
         "ordinal": 6,
-        "name": "version",
+        "name": "project_name",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "project_id",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
@@ -51,8 +56,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "debdcb856e28eb03feb235a12e5adf2dbe25f50eba6c73828247d9488c33307d"
+  "hash": "cb6f097740fefe33b23342300d70be039191bc894e4649f0479f049c3fca3eb6"
 }

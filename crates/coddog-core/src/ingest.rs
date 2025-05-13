@@ -4,7 +4,8 @@ use anyhow::Result;
 use mapfile_parser::MapFile;
 use object::{Object, ObjectSection, ObjectSymbol};
 
-use crate::{Endianness, Platform, Symbol};
+use crate::instructions::get_insns;
+use crate::{Platform, Symbol};
 
 pub fn read_elf(
     platform: Platform,
@@ -37,7 +38,7 @@ pub fn read_elf(
                 })
         })
         .map(|(symbol, data, section_address, section_offset)| {
-            let insns: Vec<u8> = get_insns(data, platform);
+            let insns = get_insns(data, platform);
             let offset = symbol.address() - section_address + section_offset;
 
             Symbol::new(
@@ -53,23 +54,6 @@ pub fn read_elf(
         })
         .collect();
     Ok(ret)
-}
-
-fn get_insns(bytes: &[u8], platform: Platform) -> Vec<u8> {
-    match platform {
-        Platform::N64 | Platform::PSX | Platform::PS2 => {
-            // Remove trailing nops
-            let mut bs = bytes.to_vec();
-            while !bs.is_empty() && bs[bs.len() - 1] == 0 {
-                bs.pop();
-            }
-
-            match platform.endianness() {
-                Endianness::Little => bs.iter().step_by(4).map(|x| x >> 2).collect(),
-                Endianness::Big => bs.iter().skip(3).step_by(4).map(|x| x >> 2).collect(),
-            }
-        }
-    }
 }
 
 pub fn read_map(

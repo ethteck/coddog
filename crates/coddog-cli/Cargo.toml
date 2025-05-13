@@ -5,15 +5,15 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "../README.md"
+readme = "../../README.md"
 description = """
 A tool for finding matching sequences of code among binaries
 """
 
 [dependencies]
 anyhow = "1.0"
-blake3 = "1.0"
 clap = { version = "4.5.38", features = ["derive"] }
+coddog-db = { path = "../coddog-db" }
 coddog-core = { path = "../coddog-core" }
 colored = "3.0.0"
 decomp_settings = "0.0.7"

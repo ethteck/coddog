@@ -1,0 +1,19 @@
+[package]
+name = "coddog-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "../../README.md"
+description = """
+A database library for finding matching sequences of code among binaries
+"""
+
+[dependencies]
+blake3 = "1.0"
+coddog-core = { path = "../coddog-core" }
+dotenvy = "0.15.7"
+sqlx = { version = "0.8", features = ["macros", "migrate", "runtime-tokio", "postgres"] }
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }
+anyhow = "1.0.98"

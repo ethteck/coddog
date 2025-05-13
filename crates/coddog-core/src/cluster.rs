@@ -40,16 +40,3 @@ pub fn get_clusters(symbols: &[Symbol], threshold: f32, min_len: usize) -> Vec<C
 
     clusters
 }
-
-pub fn do_cluster(symbols: &[Symbol], threshold: f32, min_len: usize) {
-    let clusters = get_clusters(symbols, threshold, min_len);
-
-    // Print clusters
-    for cluster in clusters.iter().filter(|c| c.size() > 1) {
-        println!(
-            "Cluster {} has {} symbols",
-            cluster.syms[0].name,
-            cluster.size()
-        );
-    }
-}

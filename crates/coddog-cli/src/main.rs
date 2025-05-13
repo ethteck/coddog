@@ -1,13 +1,12 @@
-pub mod db;
-
-use crate::db::DBSymbol;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, cluster, get_submatches,
+    self as core, get_submatches,
     ingest::{read_elf, read_map},
     Binary, Platform, Symbol,
 };
+use coddog_db::DBSymbol;
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
@@ -219,6 +218,19 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
     }
 }
 
+pub fn do_cluster(symbols: &[Symbol], threshold: f32, min_len: usize) {
+    let clusters = get_clusters(symbols, threshold, min_len);
+
+    // Print clusters
+    for cluster in clusters.iter().filter(|c| c.size() > 1) {
+        println!(
+            "Cluster {} has {} symbols",
+            cluster.syms[0].name,
+            cluster.size()
+        );
+    }
+}
+
 fn get_full_path(base_dir: &Path, config: &Version, name: &str) -> Option<PathBuf> {
     config.paths.get(name).map(|path| {
         if path.is_relative() {
@@ -261,7 +273,7 @@ fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<
         return read_map(platform, unmatched_funcs, rom_bytes, map_path);
     }
 
-    Err(anyhow::anyhow!("No elf or mapfile found"))
+    Err(anyhow!("No elf or mapfile found"))
 }
 
 fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: usize) {
@@ -396,7 +408,7 @@ async fn main() -> Result<()> {
         }
         Commands::Cluster { threshold, min_len } => {
             let symbols = get_cwd_symbols()?;
-            cluster::do_cluster(&symbols, *threshold, *min_len);
+            do_cluster(&symbols, *threshold, *min_len);
         }
         Commands::Compare2 {
             yaml1,
@@ -473,7 +485,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Db(DbCommands::Init) => match db::db_init().await {
+        Commands::Db(DbCommands::Init) => match coddog_db::db_init().await {
             Ok(_) => println!("Database initialized"),
             Err(e) => println!("Error initializing database: {}", e),
         },
@@ -481,27 +493,31 @@ async fn main() -> Result<()> {
             let config = read_config(yaml.to_path_buf())?;
             let platform = Platform::of(&config.platform).unwrap();
 
-            let pool = db::db_init().await?;
+            let pool = coddog_db::db_init().await?;
             let mut tx = pool.begin().await?;
 
-            let project_id = db::add_project(&mut tx, &config.name, platform).await?;
+            let project_id = coddog_db::add_project(&mut tx, &config.name, platform).await?;
 
             for version in &config.versions {
                 let baserom_path =
                     get_full_path(yaml.parent().unwrap(), version, "baserom").unwrap();
                 let source_id =
-                    db::add_source(&mut tx, project_id, &version.fullname, &baserom_path).await?;
+                    coddog_db::add_source(&mut tx, project_id, &version.fullname, &baserom_path)
+                        .await?;
 
                 let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
 
-                let symbol_ids = db::add_symbols(&mut tx, source_id, &symbols).await;
-
-                //rintln!("Importing hashes for version {}", version.fullname);
+                let symbol_ids = coddog_db::add_symbols(&mut tx, source_id, &symbols).await;
 
                 let mut pb = ProgressBar::new(symbols.len() as u64);
 
                 pb.format("[=>-]");
-                pb.message(format!("Importing hashes for version {} ", version.fullname).as_str());
+
+                if config.versions.len() == 1 {
+                    pb.message(format!("Importing hashes for {} ", version.fullname).as_str())
+                } else {
+                    pb.message("Importing hashes ")
+                }
 
                 for (symbol, id) in symbols.iter().zip(symbol_ids) {
                     pb.inc();
@@ -509,7 +525,7 @@ async fn main() -> Result<()> {
                     let window_size = 5;
                     let fuzzy_hashes = symbol.get_fuzzy_hashes(window_size);
 
-                    db::add_symbol_window_hashes(&mut tx, id, &fuzzy_hashes).await?;
+                    coddog_db::add_symbol_window_hashes(&mut tx, &fuzzy_hashes, id).await?;
                 }
                 println!();
             }
@@ -517,38 +533,41 @@ async fn main() -> Result<()> {
             println!("Imported project {} ", config.name);
         }
         Commands::Db(DbCommands::Match { query }) => {
-            let pool = db::db_init().await?;
+            let pool = coddog_db::db_init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
-            let matches =
-                db::db_query_symbols_by_fuzzy_hash(pool.clone(), symbol.fuzzy_hash).await?;
+            let matches = coddog_db::db_query_symbols_by_fuzzy_hash(pool.clone(), &symbol).await?;
+
+            if matches.is_empty() {
+                return Err(anyhow!("No matches found"));
+            }
 
             for sym in matches {
-                println!("{} - {} {}", sym.name, sym.project, sym.version);
+                println!("{} - {} {}", sym.name, sym.project_name, sym.source_name);
             }
         }
         Commands::Db(DbCommands::Submatch { query }) => {
-            let pool = db::db_init().await?;
+            let pool = coddog_db::db_init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
             let query_hashes =
-                db::db_query_windows_by_symbol_id_fuzzy(pool.clone(), symbol.id).await?;
+                coddog_db::db_query_windows_by_symbol_id_fuzzy(pool.clone(), symbol.id).await?;
 
             if query_hashes.is_empty() {
-                return Err(anyhow::anyhow!(
-                    "No hashes found for the given symbol '{}'",
-                    query
-                ));
+                return Err(anyhow!("No hashes found for the given symbol '{}'", query));
             }
 
-            let matching_hashes =
-                db::db_query_windows_by_symbol_hashes_fuzzy(pool.clone(), &query_hashes, symbol.id)
-                    .await?;
+            let matching_hashes = coddog_db::db_query_windows_by_symbol_hashes_fuzzy(
+                pool.clone(),
+                &query_hashes,
+                symbol.id,
+            )
+            .await?;
 
             if matching_hashes.is_empty() {
-                return Err(anyhow::anyhow!("No submatches found"));
+                return Err(anyhow!("No submatches found"));
             }
 
             for hash in &matching_hashes {
@@ -569,13 +588,10 @@ async fn main() -> Result<()> {
 }
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, query: &str) -> Result<DBSymbol> {
-    let symbols = db::db_query_symbols_by_name(conn, query).await?;
+    let symbols = coddog_db::db_query_symbols_by_name(conn, query).await?;
 
     if symbols.is_empty() {
-        return Err(anyhow::anyhow!(
-            "No symbols found with the name '{}'",
-            query
-        ));
+        return Err(anyhow!("No symbols found with the name '{}'", query));
     }
 
     if symbols.len() > 1 {
