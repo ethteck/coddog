@@ -13,12 +13,13 @@ A tool for finding matching sequences of code among binaries
 [dependencies]
 anyhow = "1.0"
 blake3 = "1.0"
-clap = { version = "4.5.29", features = ["derive"] }
+clap = { version = "4.5.38", features = ["derive"] }
 coddog-core = { path = "../coddog-core" }
 colored = "3.0.0"
 decomp_settings = "0.0.7"
 dotenvy = "0.15.7"
 glob = "0.3.2"
+inquire = "0.7.5"
 pbr = "1.1.1"
 sqlx = { version = "0.8", features = ["macros", "migrate", "runtime-tokio", "postgres"] }
-tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.45.0", features = ["macros", "rt-multi-thread"] }

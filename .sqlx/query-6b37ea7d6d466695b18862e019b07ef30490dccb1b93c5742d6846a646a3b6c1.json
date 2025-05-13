@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT symbols.id, symbols.source_id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash,\n        sources.name AS version, projects.name AS project\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n                                             WHERE symbols.name = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "source_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "pos",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "fuzzy_hash",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "exact_hash",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "project",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6b37ea7d6d466695b18862e019b07ef30490dccb1b93c5742d6846a646a3b6c1"
+}

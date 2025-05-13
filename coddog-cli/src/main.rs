@@ -1,22 +1,23 @@
 pub mod db;
 
+use crate::db::DBSymbol;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use coddog_core::{
+    self as core, cluster, get_submatches,
+    ingest::{read_elf, read_map},
+    Binary, Platform, Symbol,
+};
 use colored::*;
-use db::db_init;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
 use glob::glob;
+use inquire::Select;
 use pbr::ProgressBar;
+use sqlx::{Pool, Postgres};
 use std::{
     fs,
     path::{Path, PathBuf},
-};
-
-use coddog_core::{
-    self as core, cluster, get_hashes, get_submatches,
-    ingest::{read_elf, read_map},
-    Binary, Platform, Symbol,
 };
 
 const BINARY_COLORS: [Color; 6] = [
@@ -116,6 +117,14 @@ enum DbCommands {
         /// Path to the decomp.yaml file
         yaml: PathBuf,
     },
+    Match {
+        /// Name of the query function
+        query: String,
+    },
+    Submatch {
+        /// Name of the query function
+        query: String,
+    },
 }
 
 struct FunctionMatch<'a> {
@@ -169,7 +178,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
         return;
     };
 
-    let query_hashes = get_hashes(query_sym, window_size);
+    let query_hashes = query_sym.get_fuzzy_hashes(window_size);
 
     for s in symbols {
         if s == query_sym {
@@ -186,7 +195,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             continue;
         }
 
-        let hashes = get_hashes(s, window_size);
+        let hashes = s.get_fuzzy_hashes(window_size);
 
         let pair_matches = get_submatches(&query_hashes, &hashes, window_size);
 
@@ -237,22 +246,22 @@ fn get_unmatched_funcs(base_dir: &Path, config: &Version) -> Option<Vec<String>>
 fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<Vec<Symbol>> {
     let unmatched_funcs = get_unmatched_funcs(base_dir, config);
     let platform =
-        Platform::of(platform).expect(format!("Invalid platform: {}", platform).as_str());
+        Platform::of(platform).unwrap_or_else(|| panic!("Invalid platform: {}", platform));
 
     if let Some(elf_path) = get_full_path(base_dir, config, "elf") {
         let elf_data = fs::read(elf_path)?;
-        return read_elf(&platform, &unmatched_funcs, elf_data);
+        return read_elf(platform, &unmatched_funcs, elf_data);
     }
 
     if let (Some(baserom_path), Some(map_path)) = (
         get_full_path(base_dir, config, "baserom"),
         get_full_path(base_dir, config, "map"),
     ) {
-        let rom_bytes = std::fs::read(baserom_path)?;
-        return read_map(&platform, unmatched_funcs, rom_bytes, map_path);
+        let rom_bytes = fs::read(baserom_path)?;
+        return read_map(platform, unmatched_funcs, rom_bytes, map_path);
     }
 
-    panic!("No elf or mapfile found");
+    Err(anyhow::anyhow!("No elf or mapfile found"))
 }
 
 fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: usize) {
@@ -368,29 +377,25 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
 fn get_cwd_symbols() -> Result<Vec<Symbol>> {
     let config = scan_for_config()?;
     let version = &config.versions[0]; // TODO: allow specifying
-    Ok(collect_symbols(
-        version,
-        &std::env::current_dir()?,
-        &config.platform,
-    )?)
+    collect_symbols(version, &std::env::current_dir()?, &config.platform)
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     dotenv().ok();
     let cli: Cli = Cli::parse();
 
     match &cli.command {
         Commands::Match { query, threshold } => {
-            let symbols = get_cwd_symbols().unwrap();
+            let symbols = get_cwd_symbols()?;
             do_match(query, &symbols, *threshold);
         }
         Commands::Submatch { query, window_size } => {
-            let symbols = get_cwd_symbols().unwrap();
+            let symbols = get_cwd_symbols()?;
             do_submatch(query, &symbols, *window_size);
         }
         Commands::Cluster { threshold, min_len } => {
-            let symbols = get_cwd_symbols().unwrap();
+            let symbols = get_cwd_symbols()?;
             cluster::do_cluster(&symbols, *threshold, *min_len);
         }
         Commands::Compare2 {
@@ -401,16 +406,14 @@ async fn main() {
             threshold,
             min_len,
         } => {
-            let config1 = read_config(yaml1.to_path_buf()).unwrap();
-            let config2 = read_config(yaml2.to_path_buf()).unwrap();
+            let config1 = read_config(yaml1.to_path_buf())?;
+            let config2 = read_config(yaml2.to_path_buf())?;
 
             let version1 = config1.get_version_by_name(version1).unwrap();
             let version2 = config2.get_version_by_name(version2).unwrap();
 
-            let symbols1 =
-                collect_symbols(&version1, yaml1.parent().unwrap(), &config1.platform).unwrap();
-            let symbols2 =
-                collect_symbols(&version2, yaml2.parent().unwrap(), &config2.platform).unwrap();
+            let symbols1 = collect_symbols(&version1, yaml1.parent().unwrap(), &config1.platform)?;
+            let symbols2 = collect_symbols(&version2, yaml2.parent().unwrap(), &config2.platform)?;
 
             let bin1 = Binary {
                 name: config1.name,
@@ -429,14 +432,13 @@ async fn main() {
             main_version,
             other_yamls,
         } => {
-            let main_config = read_config(main_yaml.to_path_buf()).unwrap();
+            let main_config = read_config(main_yaml.to_path_buf())?;
             let main_version = main_config.get_version_by_name(main_version).unwrap();
             let main_symbols = collect_symbols(
                 &main_version,
                 main_yaml.parent().unwrap(),
                 &main_config.platform,
-            )
-            .unwrap();
+            )?;
 
             let main_bin: Binary = Binary {
                 name: main_config.name.clone(),
@@ -444,15 +446,14 @@ async fn main() {
             };
 
             for other_yaml in other_yamls {
-                let other_config = read_config(other_yaml.to_path_buf()).unwrap();
+                let other_config = read_config(other_yaml.to_path_buf())?;
 
                 for other_version in &other_config.versions {
                     let other_symbols = collect_symbols(
                         other_version,
                         other_yaml.parent().unwrap(),
                         &other_config.platform.clone(),
-                    )
-                    .unwrap();
+                    )?;
 
                     let other_bin = Binary {
                         name: other_config.name.clone(),
@@ -472,52 +473,115 @@ async fn main() {
                 }
             }
         }
-        Commands::Db(DbCommands::Init) => match db_init().await {
+        Commands::Db(DbCommands::Init) => match db::db_init().await {
             Ok(_) => println!("Database initialized"),
             Err(e) => println!("Error initializing database: {}", e),
         },
         Commands::Db(DbCommands::AddProject { yaml }) => {
-            let config = read_config(yaml.to_path_buf()).unwrap();
+            let config = read_config(yaml.to_path_buf())?;
             let platform = Platform::of(&config.platform).unwrap();
 
-            let pool = db::db_init().await.unwrap();
-            let project_id = db::add_project(pool.clone(), &config.name, platform)
-                .await
-                .unwrap();
+            let pool = db::db_init().await?;
+            let mut tx = pool.begin().await?;
 
-            println!("Imported project {} with id {}", config.name, project_id);
+            let project_id = db::add_project(&mut tx, &config.name, platform).await?;
 
             for version in &config.versions {
                 let baserom_path =
                     get_full_path(yaml.parent().unwrap(), version, "baserom").unwrap();
                 let source_id =
-                    db::add_source(pool.clone(), project_id, &version.fullname, &baserom_path)
-                        .await
-                        .unwrap();
+                    db::add_source(&mut tx, project_id, &version.fullname, &baserom_path).await?;
 
-                let symbols =
-                    collect_symbols(version, yaml.parent().unwrap(), &config.platform).unwrap();
+                let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
 
-                let symbol_ids = db::add_symbols(pool.clone(), source_id, &symbols).await;
+                let symbol_ids = db::add_symbols(&mut tx, source_id, &symbols).await;
 
-                println!("Importing symbols' hashes for version {}", version.fullname);
+                //rintln!("Importing hashes for version {}", version.fullname);
 
                 let mut pb = ProgressBar::new(symbols.len() as u64);
-                pb.format("[=>-]");
 
-                let mut tx = pool.begin().await.unwrap();
+                pb.format("[=>-]");
+                pb.message(format!("Importing hashes for version {} ", version.fullname).as_str());
 
                 for (symbol, id) in symbols.iter().zip(symbol_ids) {
                     pb.inc();
 
                     let window_size = 5;
-                    db::add_symbol_hashes(&mut tx, id, &get_hashes(&symbol, window_size))
-                        .await
-                        .unwrap();
-                }
+                    let fuzzy_hashes = symbol.get_fuzzy_hashes(window_size);
 
-                tx.commit().await.unwrap();
+                    db::add_symbol_window_hashes(&mut tx, id, &fuzzy_hashes).await?;
+                }
+                println!();
+            }
+            tx.commit().await?;
+            println!("Imported project {} ", config.name);
+        }
+        Commands::Db(DbCommands::Match { query }) => {
+            let pool = db::db_init().await?;
+
+            let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
+
+            let matches =
+                db::db_query_symbols_by_fuzzy_hash(pool.clone(), symbol.fuzzy_hash).await?;
+
+            for sym in matches {
+                println!("{} - {} {}", sym.name, sym.project, sym.version);
             }
         }
+        Commands::Db(DbCommands::Submatch { query }) => {
+            let pool = db::db_init().await?;
+
+            let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
+
+            let query_hashes =
+                db::db_query_windows_by_symbol_id_fuzzy(pool.clone(), symbol.id).await?;
+
+            if query_hashes.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "No hashes found for the given symbol '{}'",
+                    query
+                ));
+            }
+
+            let matching_hashes =
+                db::db_query_windows_by_symbol_hashes_fuzzy(pool.clone(), &query_hashes, symbol.id)
+                    .await?;
+
+            if matching_hashes.is_empty() {
+                return Err(anyhow::anyhow!("No submatches found"));
+            }
+
+            for hash in &matching_hashes {
+                println!(
+                    "{}:{} in {} {}",
+                    hash.symbol_name, hash.pos, hash.project_name, hash.source_name
+                );
+            }
+            println!(
+                "{} total matching hashes from {} query hashes",
+                matching_hashes.len(),
+                query_hashes.len()
+            );
+        }
+    }
+
+    Ok(())
+}
+
+async fn db_search_symbol_by_name(conn: Pool<Postgres>, query: &str) -> Result<DBSymbol> {
+    let symbols = db::db_query_symbols_by_name(conn, query).await?;
+
+    if symbols.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No symbols found with the name '{}'",
+            query
+        ));
+    }
+
+    if symbols.len() > 1 {
+        let res = Select::new("Which symbol do you want to check?", symbols).prompt();
+        Ok(res?)
+    } else {
+        Ok(symbols.first().unwrap().clone())
     }
 }

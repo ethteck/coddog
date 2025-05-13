@@ -7,7 +7,7 @@ use object::{Object, ObjectSection, ObjectSymbol};
 use crate::{Endianness, Platform, Symbol};
 
 pub fn read_elf(
-    platform: &Platform,
+    platform: Platform,
     unmatched_funcs: &Option<Vec<String>>,
     elf_data: Vec<u8>,
 ) -> Result<Vec<Symbol>> {
@@ -37,39 +37,43 @@ pub fn read_elf(
                 })
         })
         .map(|(symbol, data, section_address, section_offset)| {
-            let insns: Vec<u8> = get_mips_insns(data, platform.endianness());
+            let insns: Vec<u8> = get_insns(data, platform);
             let offset = symbol.address() - section_address + section_offset;
 
-            Symbol {
-                id: 0,
-                name: symbol.name().unwrap().to_string(),
-                bytes: data.to_vec(),
+            Symbol::new(
+                0,
+                symbol.name().unwrap().to_string(),
+                data.to_vec(),
                 insns,
-                offset: offset as usize,
-                is_decompiled: unmatched_funcs
+                offset as usize,
+                unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
-            }
+            )
         })
         .collect();
     Ok(ret)
 }
 
-fn get_mips_insns(bytes: &[u8], endianness: Endianness) -> Vec<u8> {
-    // Remove trailing nops
-    let mut bs = bytes.to_vec();
-    while !bs.is_empty() && bs[bs.len() - 1] == 0 {
-        bs.pop();
-    }
+fn get_insns(bytes: &[u8], platform: Platform) -> Vec<u8> {
+    match platform {
+        Platform::N64 | Platform::PSX | Platform::PS2 => {
+            // Remove trailing nops
+            let mut bs = bytes.to_vec();
+            while !bs.is_empty() && bs[bs.len() - 1] == 0 {
+                bs.pop();
+            }
 
-    match endianness {
-        Endianness::Little => bs.iter().step_by(4).map(|x| x >> 2).collect(),
-        Endianness::Big => bs.iter().skip(3).step_by(4).map(|x| x >> 2).collect(),
+            match platform.endianness() {
+                Endianness::Little => bs.iter().step_by(4).map(|x| x >> 2).collect(),
+                Endianness::Big => bs.iter().skip(3).step_by(4).map(|x| x >> 2).collect(),
+            }
+        }
     }
 }
 
 pub fn read_map(
-    platform: &Platform,
+    platform: Platform,
     unmatched_funcs: Option<Vec<String>>,
     rom_bytes: Vec<u8>,
     map_path: PathBuf,
@@ -88,18 +92,18 @@ pub fn read_map(
             let start = x.vrom.unwrap() as usize;
             let end = start + x.size.unwrap() as usize;
             let raw = &rom_bytes[start..end];
-            let insns = get_mips_insns(raw, platform.endianness());
+            let insns = get_insns(raw, platform);
 
-            Symbol {
+            Symbol::new(
                 id,
-                name: x.name.clone(),
-                bytes: raw.to_vec(),
+                x.name.clone(),
+                raw.to_vec(),
                 insns,
-                offset: start,
-                is_decompiled: unmatched_funcs
+                start,
+                unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&x.name)),
-            }
+            )
         })
         .collect();
     Ok(ret)

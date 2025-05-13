@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    SELECT windows.id AS hash_id, symbols.id AS symbol_id, source_id, windows.pos,\n           symbols.name AS symbol_name, sources.name AS source_name, projects.id AS project_id,\n           projects.name AS project_name\n    FROM windows\n    INNER JOIN symbols ON symbols.id = windows.symbol_id\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on projects.id = sources.project_id\n    WHERE windows.hash = ANY($1) AND NOT symbols.id = $2\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "hash_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "symbol_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "source_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "pos",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "symbol_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "source_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "project_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "project_name",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b8d6e8b1f84dc644bd48fe6e6b8cd6c6b16db1b94a699b5c3a0ce5886f13f512"
+}

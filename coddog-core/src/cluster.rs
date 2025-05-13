@@ -21,7 +21,7 @@ pub fn get_clusters(symbols: &[Symbol], threshold: f32, min_len: usize) -> Vec<C
             let mut cluster_match = false;
 
             for cluster in &mut clusters {
-                let cluster_score = crate::diff_symbols(symbol, cluster.syms[0], threshold);
+                let cluster_score = diff_symbols(symbol, cluster.syms[0], threshold);
                 if cluster_score > threshold {
                     cluster_match = true;
                     cluster.syms.push(symbol);

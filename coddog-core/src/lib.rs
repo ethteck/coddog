@@ -65,6 +65,10 @@ pub struct Symbol {
     pub offset: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
+    /// the exact hash for the symbol
+    pub exact_hash: u64,
+    /// the fuzzy hash for the symbol
+    pub fuzzy_hash: u64,
 }
 
 #[derive(Debug)]
@@ -80,17 +84,56 @@ pub struct InsnSeqMatch {
     pub length: usize,
 }
 
-pub fn get_hashes(bytes: &Symbol, window_size: usize) -> Vec<u64> {
-    let ret: Vec<u64> = bytes
-        .insns
-        .windows(window_size)
-        .map(|x| {
-            let mut hasher = DefaultHasher::new();
-            (*x).hash(&mut hasher);
-            hasher.finish()
-        })
-        .collect();
-    ret
+impl Symbol {
+    pub fn new(
+        id: usize,
+        name: String,
+        bytes: Vec<u8>,
+        insns: Vec<u8>,
+        offset: usize,
+        is_decompiled: bool,
+    ) -> Symbol {
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        let exact_hash = hasher.finish();
+
+        let mut hasher = DefaultHasher::new();
+        insns.hash(&mut hasher);
+        let fuzzy_hash = hasher.finish();
+
+        Symbol {
+            id,
+            name,
+            bytes,
+            insns,
+            offset,
+            is_decompiled,
+            exact_hash,
+            fuzzy_hash,
+        }
+    }
+
+    pub fn get_exact_hashes(&self, window_size: usize) -> Vec<u64> {
+        self.bytes
+            .windows(window_size)
+            .map(|x| {
+                let mut hasher = DefaultHasher::new();
+                (*x).hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect()
+    }
+
+    pub fn get_fuzzy_hashes(&self, window_size: usize) -> Vec<u64> {
+        self.insns
+            .windows(window_size)
+            .map(|x| {
+                let mut hasher = DefaultHasher::new();
+                (*x).hash(&mut hasher);
+                hasher.finish()
+            })
+            .collect()
+    }
 }
 
 pub fn get_submatches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) -> Vec<InsnSeqMatch> {
