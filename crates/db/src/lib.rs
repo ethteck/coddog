@@ -224,7 +224,7 @@ pub async fn db_query_symbols_by_fuzzy_hash(
 ) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.name, symbols.fuzzy_hash, symbols.exact_hash, 
+    SELECT symbols.id, symbols.pos, symbols.name, symbols.fuzzy_hash, symbols.exact_hash,
            symbols.source_id,
             sources.name AS source_name, projects.name AS project_name, projects.id as project_id
         FROM symbols
@@ -259,18 +259,23 @@ pub async fn db_query_windows_by_symbol_id_fuzzy(
     conn: Pool<Postgres>,
     id: i64,
 ) -> Result<Vec<i64>> {
-    let rows = sqlx::query!("SELECT windows.hash FROM windows WHERE symbol_id = $1", id)
-        .fetch_all(&conn)
-        .await?;
+    let rows = sqlx::query!(
+        "SELECT windows.hash FROM windows WHERE symbol_id = $1 ORDER BY windows.pos",
+        id
+    )
+    .fetch_all(&conn)
+    .await?;
 
     let res: Vec<i64> = rows.iter().map(|row| row.hash).collect();
 
     Ok(res)
 }
 
+#[derive(Clone, Debug)]
 pub struct DBWindow {
-    pub id: i64,
-    pub pos: i32,
+    pub hash: i64,
+    pub start: i32,
+    pub length: i64,
     pub symbol_id: i64,
     pub symbol_name: String,
     pub source_id: i64,
@@ -285,17 +290,43 @@ pub async fn db_query_windows_by_symbol_hashes_fuzzy(
 ) -> Result<Vec<DBWindow>> {
     let rows = sqlx::query!(
         "
-    SELECT windows.id AS hash_id, symbols.id AS symbol_id, source_id, windows.pos,
-           symbols.name AS symbol_name, sources.name AS source_name, projects.id AS project_id,
-           projects.name AS project_name
+WITH data as (
+    SELECT symbol_id, pos, hash
     FROM windows
-    INNER JOIN symbols ON symbols.id = windows.symbol_id
-    INNER JOIN sources ON sources.id = symbols.source_id
-    INNER JOIN projects on projects.id = sources.project_id
-    WHERE windows.hash = ANY($1) AND NOT symbols.id = $2
-    ",
+    WHERE windows.hash = ANY($1) AND NOT symbol_id = $2
+    ORDER BY windows.symbol_id, windows.pos
+    )
+, sequences AS (
+    SELECT symbol_id, pos, hash,
+           pos - ROW_NUMBER() OVER (PARTITION BY symbol_id ORDER BY pos) AS grp
+    FROM data
+), first_hash_per_group AS (
+    SELECT DISTINCT ON (symbol_id, grp)
+        symbol_id, grp, hash
+    FROM sequences
+    ORDER BY symbol_id, grp, pos  -- This ensures we get the first hash in each group
+), islands AS (
+    SELECT
+        f.symbol_id, 
+        MIN(s.pos) AS start, 
+        COUNT(*) as length, 
+        f.hash
+    FROM sequences s
+    JOIN first_hash_per_group f ON s.symbol_id = f.symbol_id AND s.grp = f.grp
+    GROUP BY f.symbol_id, f.grp, f.hash
+)
+SELECT islands.hash, islands.symbol_id, islands.start, islands.length,
+       symbols.name AS symbol_name,
+       sources.id AS source_id, sources.name AS source_name,
+       projects.id AS project_id, projects.name AS project_name
+FROM islands
+INNER JOIN symbols ON symbols.id = islands.symbol_id
+INNER JOIN sources ON sources.id = symbols.source_id
+INNER JOIN projects on projects.id = sources.project_id
+ORDER BY projects.id, sources.id, symbols.id, islands.start
+",
         hashes,
-        symbol_id,
+        symbol_id
     )
     .fetch_all(&conn)
     .await?;
@@ -303,8 +334,9 @@ pub async fn db_query_windows_by_symbol_hashes_fuzzy(
     let res: Vec<DBWindow> = rows
         .iter()
         .map(|row| DBWindow {
-            id: row.hash_id,
-            pos: row.pos,
+            hash: row.hash,
+            start: row.start.unwrap(),
+            length: row.length.unwrap(),
             symbol_id: row.symbol_id,
             symbol_name: row.symbol_name.clone(),
             source_id: row.source_id,

@@ -119,19 +119,21 @@ impl Symbol {
     }
 
     pub fn get_exact_hashes(&self, window_size: usize) -> Vec<u64> {
-        self.bytes
-            .windows(window_size)
-            .map(|x| {
-                let mut hasher = DefaultHasher::new();
-                (*x).hash(&mut hasher);
-                hasher.finish()
-            })
-            .collect()
+        Self::get_hashes(&self.bytes, window_size)
     }
 
     pub fn get_fuzzy_hashes(&self, window_size: usize) -> Vec<u64> {
-        self.insns
-            .windows(window_size)
+        Self::get_hashes(&self.insns, window_size)
+    }
+
+    fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
+        let mut data = data.to_vec();
+
+        if data.len() < window_size {
+            data.resize(window_size, Default::default());
+        }
+
+        data.windows(window_size)
             .map(|x| {
                 let mut hasher = DefaultHasher::new();
                 (*x).hash(&mut hasher);

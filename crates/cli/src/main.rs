@@ -12,8 +12,11 @@ use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
 use glob::glob;
 use inquire::Select;
+use itertools::Itertools;
 use pbr::ProgressBar;
 use sqlx::{Pool, Postgres};
+use std::collections::HashMap;
+use std::time::SystemTime;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -514,9 +517,9 @@ async fn main() -> Result<()> {
                 pb.format("[=>-]");
 
                 if config.versions.len() == 1 {
-                    pb.message(format!("Importing hashes for {} ", version.fullname).as_str())
-                } else {
                     pb.message("Importing hashes ")
+                } else {
+                    pb.message(format!("Importing hashes ({}) ", version.fullname).as_str())
                 }
 
                 for (symbol, id) in symbols.iter().zip(symbol_ids) {
@@ -559,6 +562,7 @@ async fn main() -> Result<()> {
                 return Err(anyhow!("No hashes found for the given symbol '{}'", query));
             }
 
+            let before_time = SystemTime::now();
             let matching_hashes = coddog_db::db_query_windows_by_symbol_hashes_fuzzy(
                 pool.clone(),
                 &query_hashes,
@@ -566,25 +570,144 @@ async fn main() -> Result<()> {
             )
             .await?;
 
+            match before_time.elapsed() {
+                Ok(elapsed) => {
+                    println!("Big query took {}ms", elapsed.as_millis());
+                }
+                Err(e) => {
+                    // an error occurred!
+                    println!("Error: {e:?}");
+                }
+            }
+
             if matching_hashes.is_empty() {
                 return Err(anyhow!("No submatches found"));
             }
 
-            for hash in &matching_hashes {
-                println!(
-                    "{}:{} in {} {}",
-                    hash.symbol_name, hash.pos, hash.project_name, hash.source_name
-                );
+            let mut project_map: HashMap<i64, String> = HashMap::new();
+            let mut source_map: HashMap<i64, String> = HashMap::new();
+            let mut symbol_map: HashMap<i64, String> = HashMap::new();
+
+            let mut results = SubmatchResults { projects: vec![] };
+
+            for (project_id, project_rows) in &matching_hashes.iter().chunk_by(|h| h.project_id) {
+                let project_rows = project_rows.collect_vec();
+                let project_name = &project_rows.get(0).unwrap().project_name;
+                project_map.insert(project_id, project_name.to_string());
+
+                let mut project_results = SubmatchProjectResults {
+                    id: project_id,
+                    sources: vec![],
+                };
+
+                for (source_id, source_rows) in &project_rows.iter().chunk_by(|h| h.source_id) {
+                    let source_rows = source_rows.collect_vec();
+                    let source_name = &source_rows.get(0).unwrap().source_name;
+                    source_map.insert(source_id, source_name.to_string());
+
+                    let mut source_results = SubmatchSourceResults {
+                        id: source_id,
+                        symbols: vec![],
+                    };
+
+                    for (symbol_id, symbol_rows) in
+                        &source_rows.into_iter().chunk_by(|h| h.symbol_id)
+                    {
+                        let symbol_rows = symbol_rows.collect_vec();
+                        let sym_name = &symbol_rows.get(0).unwrap().symbol_name;
+                        symbol_map.insert(symbol_id, sym_name.clone());
+
+                        let sym_results = SubmatchSymbolResults {
+                            id: symbol_id,
+                            slices: symbol_rows
+                                .into_iter()
+                                .map(|h| SubmatchSliceResults {
+                                    hash: h.hash,
+                                    query_start: query_hashes
+                                        .iter()
+                                        .position(|qh| *qh == h.hash)
+                                        .unwrap()
+                                        as i32,
+                                    match_start: h.start,
+                                    length: h.length,
+                                })
+                                .collect(),
+                        };
+                        source_results.symbols.push(sym_results);
+                    }
+                    project_results.sources.push(source_results);
+                }
+                results.projects.push(project_results);
             }
+
             println!(
-                "{} total matching hashes from {} query hashes",
-                matching_hashes.len(),
-                query_hashes.len()
+                "{}",
+                results.to_string(5, &project_map, &source_map, &symbol_map)
             );
         }
     }
 
     Ok(())
+}
+
+struct SubmatchResults {
+    projects: Vec<SubmatchProjectResults>,
+}
+
+impl SubmatchResults {
+    fn to_string(
+        &self,
+        window_size: usize,
+        project_map: &HashMap<i64, String>,
+        source_map: &HashMap<i64, String>,
+        symbol_map: &HashMap<i64, String>,
+    ) -> String {
+        let mut result = String::new();
+        for project in &self.projects {
+            result.push_str(&format!("{}:\n", project_map.get(&project.id).unwrap()));
+            for source in &project.sources {
+                result.push_str(&format!(
+                    "\tVersion {}:\n",
+                    source_map.get(&source.id).unwrap()
+                ));
+                for symbol in &source.symbols {
+                    result.push_str(&format!("\t\t{}:\n", symbol_map.get(&symbol.id).unwrap()));
+                    for slice in &symbol.slices {
+                        result.push_str(&format!(
+                            "\t\t\t{}: [{}/{}] ({} insns)\n",
+                            slice.hash,
+                            slice.query_start,
+                            slice.match_start,
+                            slice.length as usize + window_size - 1
+                        ));
+                    }
+                }
+            }
+        }
+        result
+    }
+}
+
+struct SubmatchProjectResults {
+    id: i64,
+    sources: Vec<SubmatchSourceResults>,
+}
+
+struct SubmatchSourceResults {
+    id: i64,
+    symbols: Vec<SubmatchSymbolResults>,
+}
+
+struct SubmatchSymbolResults {
+    id: i64,
+    slices: Vec<SubmatchSliceResults>,
+}
+
+struct SubmatchSliceResults {
+    hash: i64,
+    query_start: i32,
+    match_start: i32,
+    length: i64,
 }
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, query: &str) -> Result<DBSymbol> {
