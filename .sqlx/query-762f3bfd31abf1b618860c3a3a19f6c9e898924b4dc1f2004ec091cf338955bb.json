@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.pos, symbols.name, symbols.fuzzy_hash, symbols.exact_hash, \n           symbols.source_id,\n            sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.fuzzy_hash = $1 AND NOT symbols.id = $2",
+  "query": "\n    SELECT symbols.id, symbols.pos, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",
   "describe": {
     "columns": [
       {
@@ -20,31 +20,36 @@
       },
       {
         "ordinal": 3,
-        "name": "fuzzy_hash",
+        "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 4,
-        "name": "exact_hash",
+        "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 5,
-        "name": "source_id",
+        "name": "exact_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 6,
+        "name": "source_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
         "name": "source_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "project_id",
         "type_info": "Int8"
       }
@@ -64,8 +69,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "44c6ee9b8d9329280a66e4a48f3da4f65399dd26b68f84826c4c26ba976544ed"
+  "hash": "762f3bfd31abf1b618860c3a3a19f6c9e898924b4dc1f2004ec091cf338955bb"
 }

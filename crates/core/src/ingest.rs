@@ -4,7 +4,7 @@ use anyhow::Result;
 use mapfile_parser::MapFile;
 use object::{Object, ObjectSection, ObjectSymbol};
 
-use crate::instructions::get_insns;
+use crate::arch::get_opcodes;
 use crate::{Platform, Symbol};
 
 pub fn read_elf(
@@ -38,18 +38,19 @@ pub fn read_elf(
                 })
         })
         .map(|(symbol, data, section_address, section_offset)| {
-            let insns = get_insns(data, platform);
+            let opcodes = get_opcodes(data, platform);
             let offset = symbol.address() - section_address + section_offset;
 
             Symbol::new(
                 0,
                 symbol.name().unwrap().to_string(),
                 data.to_vec(),
-                insns,
+                opcodes,
                 offset as usize,
                 unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
+                platform,
             )
         })
         .collect();
@@ -76,17 +77,18 @@ pub fn read_map(
             let start = x.vrom.unwrap() as usize;
             let end = start + x.size.unwrap() as usize;
             let raw = &rom_bytes[start..end];
-            let insns = get_insns(raw, platform);
+            let opcodes = get_opcodes(raw, platform);
 
             Symbol::new(
                 id,
                 x.name.clone(),
                 raw.to_vec(),
-                insns,
+                opcodes,
                 start,
                 unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&x.name)),
+                platform,
             )
         })
         .collect();

@@ -284,9 +284,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "coddog-core",
- "dotenvy",
  "sqlx",
- "tokio",
 ]
 
 [[package]]

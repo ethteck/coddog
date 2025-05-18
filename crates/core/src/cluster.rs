@@ -16,7 +16,7 @@ pub fn get_clusters(symbols: &[Symbol], threshold: f32, min_len: usize) -> Vec<C
 
     symbols
         .iter()
-        .filter(|s: &&Symbol| s.insns.len() >= min_len)
+        .filter(|s: &&Symbol| s.opcodes.len() >= min_len)
         .for_each(|symbol| {
             let mut cluster_match = false;
 

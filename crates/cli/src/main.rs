@@ -1,12 +1,12 @@
 use anyhow::{anyhow, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
     self as core, get_submatches,
     ingest::{read_elf, read_map},
     Binary, Platform, Symbol,
 };
-use coddog_db::DBSymbol;
+use coddog_db::{db_delete_project, DBSymbol, DBWindow};
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
@@ -113,25 +113,40 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DbCommands {
-    /// Initialize the database
-    Init,
+    /// Add a new project to the database, given a decomp.yaml file
     AddProject {
-        /// Path to the decomp.yaml file
+        /// Path to the project's decomp.yaml file
         yaml: PathBuf,
     },
+    /// Delete a project from the database, removing its sources, symbols, and hashes
+    DeleteProject {
+        /// Name of the project to delete
+        name: String,
+    },
+    /// Search the database for matches of a given symbol
     Match {
         /// Name of the query function
         query: String,
+        /// Specificity of match
+        match_type: MatchType,
     },
+    /// Search the database for submatches of a given symbol
     Submatch {
         /// Name of the query function
         query: String,
+        /// Window size (smaller values will find more matches but take longer)
+        window_size: usize,
     },
 }
 
-struct FunctionMatch<'a> {
-    symbol: &'a Symbol,
-    score: f32,
+#[derive(ValueEnum, Clone, PartialEq)]
+enum MatchType {
+    /// Only opcodes are compared
+    Opcode,
+    /// Opcodes and some operands are compared
+    Equivalent,
+    /// Exact bytes are compared
+    Exact,
 }
 
 fn cli_fullname(sym: &Symbol) -> String {
@@ -151,6 +166,11 @@ fn cli_name_colored(sym: &Symbol, color: Color) -> String {
 }
 
 fn do_match(query: &str, symbols: &[Symbol], threshold: f32) {
+    struct FunctionMatch<'a> {
+        symbol: &'a Symbol,
+        score: f32,
+    }
+
     let Some(query_sym) = symbols.iter().find(|s| s.name == query) else {
         println!("Symbol {query:} not found");
         return;
@@ -180,14 +200,14 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
         return;
     };
 
-    let query_hashes = query_sym.get_fuzzy_hashes(window_size);
+    let query_hashes = query_sym.get_opcode_hashes(window_size);
 
     for s in symbols {
         if s == query_sym {
             continue;
         }
 
-        if query_sym.insns == s.insns {
+        if query_sym.opcodes == s.opcodes {
             let match_pct = if query_sym.bytes == s.bytes {
                 "100%"
             } else {
@@ -197,7 +217,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
             continue;
         }
 
-        let hashes = s.get_fuzzy_hashes(window_size);
+        let hashes = s.get_opcode_hashes(window_size);
 
         let pair_matches = get_submatches(&query_hashes, &hashes, window_size);
 
@@ -284,11 +304,11 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
 
     bin1.symbols
         .iter()
-        .filter(|s| s.insns.len() >= min_len)
+        .filter(|s| s.opcodes.len() >= min_len)
         .for_each(|sym| {
             let mut best_match: Option<(&Symbol, f32)> = None;
 
-            for sym2 in bin2.symbols.iter().filter(|s| s.insns.len() >= min_len) {
+            for sym2 in bin2.symbols.iter().filter(|s| s.opcodes.len() >= min_len) {
                 let score = core::diff_symbols(sym, sym2, threshold);
                 if score > threshold {
                     if let Some((_, best_score)) = best_match {
@@ -391,8 +411,47 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
 
 fn get_cwd_symbols() -> Result<Vec<Symbol>> {
     let config = scan_for_config()?;
-    let version = &config.versions[0]; // TODO: allow specifying
+
+    // let version = if config.versions.len() > 1 {
+    //     let res = Select::new("Which version do you want to use?", config.versions).prompt();
+    //     res?
+    // } else {
+    //     config.versions.first().unwrap().clone()
+    // };
+
+    let version = config.versions.first().unwrap();
+
     collect_symbols(version, &std::env::current_dir()?, &config.platform)
+}
+
+async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> Result<DBSymbol> {
+    let symbols = coddog_db::db_query_symbols_by_name(conn, name).await?;
+
+    if symbols.is_empty() {
+        return Err(anyhow!("No symbols found with the name '{}'", name));
+    }
+
+    if symbols.len() > 1 {
+        let res = Select::new("Which symbol do you want to check?", symbols).prompt();
+        Ok(res?)
+    } else {
+        Ok(symbols.first().unwrap().clone())
+    }
+}
+
+async fn db_search_project_by_name(conn: Pool<Postgres>, name: &str) -> Result<i64> {
+    let projects = coddog_db::db_query_projects_by_name(conn, name).await?;
+
+    if projects.is_empty() {
+        return Err(anyhow!("No projects found with the name '{}'", name));
+    }
+
+    if projects.len() > 1 {
+        let res = Select::new("Which project do you want to check?", projects).prompt();
+        Ok(res?.id)
+    } else {
+        Ok(projects.first().unwrap().id)
+    }
 }
 
 #[tokio::main]
@@ -488,13 +547,12 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Db(DbCommands::Init) => match coddog_db::db_init().await {
-            Ok(_) => println!("Database initialized"),
-            Err(e) => println!("Error initializing database: {}", e),
-        },
         Commands::Db(DbCommands::AddProject { yaml }) => {
             let config = read_config(yaml.to_path_buf())?;
             let platform = Platform::of(&config.platform).unwrap();
+            let window_size = std::env::var("DB_WINDOW_SIZE")
+                .expect("DB_WINDOW_SIZE must be set")
+                .parse::<usize>()?;
 
             let pool = coddog_db::db_init().await?;
             let mut tx = pool.begin().await?;
@@ -525,48 +583,75 @@ async fn main() -> Result<()> {
                 for (symbol, id) in symbols.iter().zip(symbol_ids) {
                     pb.inc();
 
-                    let window_size = 5;
-                    let fuzzy_hashes = symbol.get_fuzzy_hashes(window_size);
+                    let opcode_hashes = symbol.get_opcode_hashes(window_size);
 
-                    coddog_db::add_symbol_window_hashes(&mut tx, &fuzzy_hashes, id).await?;
+                    coddog_db::add_symbol_window_hashes(&mut tx, &opcode_hashes, id).await?;
                 }
                 println!();
             }
             tx.commit().await?;
             println!("Imported project {} ", config.name);
         }
-        Commands::Db(DbCommands::Match { query }) => {
+        Commands::Db(DbCommands::DeleteProject { name }) => {
+            let pool = coddog_db::db_init().await?;
+
+            let project = db_search_project_by_name(pool.clone(), name).await?;
+
+            db_delete_project(pool.clone(), project).await?;
+            println!("Deleted project {}", name);
+        }
+        Commands::Db(DbCommands::Match { query, match_type }) => {
             let pool = coddog_db::db_init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
-            let matches = coddog_db::db_query_symbols_by_fuzzy_hash(pool.clone(), &symbol).await?;
+            let matches = match match_type {
+                MatchType::Opcode => {
+                    coddog_db::db_query_symbols_by_opcode_hash(pool.clone(), &symbol).await?
+                }
+                MatchType::Equivalent => {
+                    coddog_db::db_query_symbols_by_equiv_hash(pool.clone(), &symbol).await?
+                }
+                MatchType::Exact => {
+                    coddog_db::db_query_symbols_by_exact_hash(pool.clone(), &symbol).await?
+                }
+            };
 
             if matches.is_empty() {
-                return Err(anyhow!("No matches found"));
-            }
-
-            for sym in matches {
-                println!("{} - {} {}", sym.name, sym.project_name, sym.source_name);
+                println!("No matches found");
+            } else {
+                for sym in matches {
+                    println!("{} - {} {}", sym.name, sym.project_name, sym.source_name);
+                }
             }
         }
-        Commands::Db(DbCommands::Submatch { query }) => {
+        Commands::Db(DbCommands::Submatch { query, window_size }) => {
+            let db_window_size = std::env::var("DB_WINDOW_SIZE")
+                .expect("DB_WINDOW_SIZE must be set")
+                .parse::<usize>()?;
+
+            if *window_size < db_window_size {
+                return Err(anyhow!("Window size must be at least {}", db_window_size));
+            }
+
             let pool = coddog_db::db_init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
             let query_hashes =
-                coddog_db::db_query_windows_by_symbol_id_fuzzy(pool.clone(), symbol.id).await?;
+                coddog_db::db_query_windows_by_symbol_id_opcode(pool.clone(), symbol.id).await?;
 
             if query_hashes.is_empty() {
-                return Err(anyhow!("No hashes found for the given symbol '{}'", query));
+                println!("No hashes found for the given symbol '{}'", query);
+                return Ok(());
             }
 
             let before_time = SystemTime::now();
-            let matching_hashes = coddog_db::db_query_windows_by_symbol_hashes_fuzzy(
+            let matching_hashes = coddog_db::db_query_windows_by_symbol_hashes_opcode(
                 pool.clone(),
                 &query_hashes,
                 symbol.id,
+                (window_size - db_window_size) as i64,
             )
             .await?;
 
@@ -575,74 +660,29 @@ async fn main() -> Result<()> {
                     println!("Big query took {}ms", elapsed.as_millis());
                 }
                 Err(e) => {
-                    // an error occurred!
                     println!("Error: {e:?}");
                 }
             }
 
             if matching_hashes.is_empty() {
-                return Err(anyhow!("No submatches found"));
+                println!("No matches found");
+                return Ok(());
             }
 
             let mut project_map: HashMap<i64, String> = HashMap::new();
             let mut source_map: HashMap<i64, String> = HashMap::new();
             let mut symbol_map: HashMap<i64, String> = HashMap::new();
 
-            let mut results = SubmatchResults { projects: vec![] };
-
-            for (project_id, project_rows) in &matching_hashes.iter().chunk_by(|h| h.project_id) {
-                let project_rows = project_rows.collect_vec();
-                let project_name = &project_rows.get(0).unwrap().project_name;
-                project_map.insert(project_id, project_name.to_string());
-
-                let mut project_results = SubmatchProjectResults {
-                    id: project_id,
-                    sources: vec![],
-                };
-
-                for (source_id, source_rows) in &project_rows.iter().chunk_by(|h| h.source_id) {
-                    let source_rows = source_rows.collect_vec();
-                    let source_name = &source_rows.get(0).unwrap().source_name;
-                    source_map.insert(source_id, source_name.to_string());
-
-                    let mut source_results = SubmatchSourceResults {
-                        id: source_id,
-                        symbols: vec![],
-                    };
-
-                    for (symbol_id, symbol_rows) in
-                        &source_rows.into_iter().chunk_by(|h| h.symbol_id)
-                    {
-                        let symbol_rows = symbol_rows.collect_vec();
-                        let sym_name = &symbol_rows.get(0).unwrap().symbol_name;
-                        symbol_map.insert(symbol_id, sym_name.clone());
-
-                        let sym_results = SubmatchSymbolResults {
-                            id: symbol_id,
-                            slices: symbol_rows
-                                .into_iter()
-                                .map(|h| SubmatchSliceResults {
-                                    hash: h.hash,
-                                    query_start: query_hashes
-                                        .iter()
-                                        .position(|qh| *qh == h.hash)
-                                        .unwrap()
-                                        as i32,
-                                    match_start: h.start,
-                                    length: h.length,
-                                })
-                                .collect(),
-                        };
-                        source_results.symbols.push(sym_results);
-                    }
-                    project_results.sources.push(source_results);
-                }
-                results.projects.push(project_results);
-            }
+            let results = SubmatchResults::from_db_hashes(
+                matching_hashes,
+                &mut project_map,
+                &mut source_map,
+                &mut symbol_map,
+            );
 
             println!(
                 "{}",
-                results.to_string(5, &project_map, &source_map, &symbol_map)
+                results.to_string(*window_size, &project_map, &source_map, &symbol_map)
             );
         }
     }
@@ -655,6 +695,60 @@ struct SubmatchResults {
 }
 
 impl SubmatchResults {
+    fn from_db_hashes(
+        hashes: Vec<DBWindow>,
+        project_map: &mut HashMap<i64, String>,
+        source_map: &mut HashMap<i64, String>,
+        symbol_map: &mut HashMap<i64, String>,
+    ) -> Self {
+        let mut results = SubmatchResults { projects: vec![] };
+
+        for (project_id, project_rows) in &hashes.iter().chunk_by(|h| h.project_id) {
+            let project_rows = project_rows.collect_vec();
+            let project_name = &project_rows.first().unwrap().project_name;
+            project_map.insert(project_id, project_name.to_string());
+
+            let mut project_results = SubmatchProjectResults {
+                id: project_id,
+                sources: vec![],
+            };
+
+            for (source_id, source_rows) in &project_rows.iter().chunk_by(|h| h.source_id) {
+                let source_rows = source_rows.collect_vec();
+                let source_name = &source_rows.first().unwrap().source_name;
+                source_map.insert(source_id, source_name.to_string());
+
+                let mut source_results = SubmatchSourceResults {
+                    id: source_id,
+                    symbols: vec![],
+                };
+
+                for (symbol_id, symbol_rows) in &source_rows.into_iter().chunk_by(|h| h.symbol_id) {
+                    let symbol_rows = symbol_rows.collect_vec();
+                    let sym_name = &symbol_rows.first().unwrap().symbol_name;
+                    symbol_map.insert(symbol_id, sym_name.clone());
+
+                    let sym_results = SubmatchSymbolResults {
+                        id: symbol_id,
+                        slices: symbol_rows
+                            .into_iter()
+                            .map(|h| SubmatchSliceResults {
+                                query_start: h.query_start,
+                                match_start: h.match_start,
+                                length: h.length,
+                            })
+                            .collect(),
+                    };
+                    source_results.symbols.push(sym_results);
+                }
+                project_results.sources.push(source_results);
+            }
+            results.projects.push(project_results);
+        }
+
+        results
+    }
+
     fn to_string(
         &self,
         window_size: usize,
@@ -674,8 +768,7 @@ impl SubmatchResults {
                     result.push_str(&format!("\t\t{}:\n", symbol_map.get(&symbol.id).unwrap()));
                     for slice in &symbol.slices {
                         result.push_str(&format!(
-                            "\t\t\t{}: [{}/{}] ({} insns)\n",
-                            slice.hash,
+                            "\t\t\t[{}/{}] ({} insns)\n",
                             slice.query_start,
                             slice.match_start,
                             slice.length as usize + window_size - 1
@@ -704,23 +797,7 @@ struct SubmatchSymbolResults {
 }
 
 struct SubmatchSliceResults {
-    hash: i64,
     query_start: i32,
     match_start: i32,
     length: i64,
-}
-
-async fn db_search_symbol_by_name(conn: Pool<Postgres>, query: &str) -> Result<DBSymbol> {
-    let symbols = coddog_db::db_query_symbols_by_name(conn, query).await?;
-
-    if symbols.is_empty() {
-        return Err(anyhow!("No symbols found with the name '{}'", query));
-    }
-
-    if symbols.len() > 1 {
-        let res = Select::new("Which symbol do you want to check?", symbols).prompt();
-        Ok(res?)
-    } else {
-        Ok(symbols.first().unwrap().clone())
-    }
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.pos, symbols.fuzzy_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name = $1",
+  "query": "\n    SELECT symbols.id, symbols.pos, \n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name = $1",
   "describe": {
     "columns": [
       {
@@ -15,31 +15,36 @@
       },
       {
         "ordinal": 2,
-        "name": "fuzzy_hash",
+        "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 3,
-        "name": "exact_hash",
+        "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 4,
-        "name": "source_id",
+        "name": "exact_hash",
         "type_info": "Int8"
       },
       {
         "ordinal": 5,
+        "name": "source_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
         "name": "source_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "project_id",
         "type_info": "Int8"
       }
@@ -57,8 +62,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "cb6f097740fefe33b23342300d70be039191bc894e4649f0479f049c3fca3eb6"
+  "hash": "c688e9f908f7b558ef5858a8e956732e01442ec25bbbd1b60ec0803f31bdf375"
 }

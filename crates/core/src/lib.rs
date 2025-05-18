@@ -1,6 +1,6 @@
+pub mod arch;
 pub mod cluster;
 pub mod ingest;
-pub mod instructions;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -64,16 +64,18 @@ pub struct Symbol {
     pub name: String,
     /// the raw bytes of the symbol
     pub bytes: Vec<u8>,
-    /// the symbol's instructions, normalized to essentially just opcodes
-    pub insns: Vec<u16>,
+    /// the symbol's opcodes
+    pub opcodes: Vec<u16>,
     /// the file offset of the symbol
     pub offset: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
+    /// the opcode hash for the symbol
+    pub opcode_hash: u64,
+    /// the equivalent hash for the symbol
+    pub equiv_hash: u64,
     /// the exact hash for the symbol
     pub exact_hash: u64,
-    /// the fuzzy hash for the symbol
-    pub fuzzy_hash: u64,
 }
 
 #[derive(Debug)]
@@ -94,27 +96,31 @@ impl Symbol {
         id: usize,
         name: String,
         bytes: Vec<u8>,
-        insns: Vec<u16>,
+        opcodes: Vec<u16>,
         offset: usize,
         is_decompiled: bool,
+        platform: Platform,
     ) -> Symbol {
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         let exact_hash = hasher.finish();
 
+        let equiv_hash = arch::get_equivalence_hash(&bytes, platform);
+
         let mut hasher = DefaultHasher::new();
-        insns.hash(&mut hasher);
-        let fuzzy_hash = hasher.finish();
+        opcodes.hash(&mut hasher);
+        let opcode_hash = hasher.finish();
 
         Symbol {
             id,
             name,
             bytes,
-            insns,
+            opcodes,
             offset,
             is_decompiled,
             exact_hash,
-            fuzzy_hash,
+            equiv_hash,
+            opcode_hash,
         }
     }
 
@@ -122,8 +128,8 @@ impl Symbol {
         Self::get_hashes(&self.bytes, window_size)
     }
 
-    pub fn get_fuzzy_hashes(&self, window_size: usize) -> Vec<u64> {
-        Self::get_hashes(&self.insns, window_size)
+    pub fn get_opcode_hashes(&self, window_size: usize) -> Vec<u64> {
+        Self::get_hashes(&self.opcodes, window_size)
     }
 
     fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
@@ -186,16 +192,16 @@ pub fn get_submatches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) ->
 pub fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
     // The minimum edit distance for two strings of different lengths is `abs(l1 - l2)`
     // Quickly check if it's possible to beat the threshold. If it isn't, return 0
-    let l1 = sym1.insns.len();
-    let l2 = sym2.insns.len();
+    let l1 = sym1.opcodes.len();
+    let l2 = sym2.opcodes.len();
 
     let max_edit_dist = (l1 + l2) as f32;
     if (l1.abs_diff(l2) as f32 / max_edit_dist) > (1.0 - threshold) {
         return 0.0;
     }
 
-    let sym1_insns_u8: Vec<u8> = sym1.insns.iter().flat_map(|&x| x.to_be_bytes()).collect();
-    let sym2_insns_u8: Vec<u8> = sym2.insns.iter().flat_map(|&x| x.to_be_bytes()).collect();
+    let sym1_insns_u8: Vec<u8> = sym1.opcodes.iter().flat_map(|&x| x.to_be_bytes()).collect();
+    let sym2_insns_u8: Vec<u8> = sym2.opcodes.iter().flat_map(|&x| x.to_be_bytes()).collect();
 
     let bound = (max_edit_dist - (max_edit_dist * threshold)) as usize;
     if let Some(edit_distance) = edit_distance_bounded(&sym1_insns_u8, &sym2_insns_u8, bound) {
