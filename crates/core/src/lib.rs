@@ -2,8 +2,11 @@ pub mod arch;
 pub mod cluster;
 pub mod ingest;
 
+use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use crate::arch::get_opcodes;
+use crate::ingest::CoddogRel;
 use editdistancek::edit_distance_bounded;
 use object::Endianness;
 
@@ -58,14 +61,14 @@ impl Platform {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Symbol {
-    /// internal id for the symbol
-    pub id: usize,
     /// the name of the symbol
     pub name: String,
     /// the raw bytes of the symbol
     pub bytes: Vec<u8>,
     /// the symbol's opcodes
     pub opcodes: Vec<u16>,
+    /// the symbol's memory address
+    pub vram: usize,
     /// the file offset of the symbol
     pub offset: usize,
     /// whether the symbol is decompiled
@@ -93,29 +96,30 @@ pub struct InsnSeqMatch {
 
 impl Symbol {
     pub fn new(
-        id: usize,
         name: String,
         bytes: Vec<u8>,
-        opcodes: Vec<u16>,
+        vram: usize,
         offset: usize,
         is_decompiled: bool,
         platform: Platform,
+        relocations: &BTreeMap<u64, CoddogRel>,
     ) -> Symbol {
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         let exact_hash = hasher.finish();
 
-        let equiv_hash = arch::get_equivalence_hash(&bytes, platform);
+        let equiv_hash = arch::get_equivalence_hash(&bytes, vram, platform, relocations);
 
+        let opcodes = get_opcodes(&bytes, platform);
         let mut hasher = DefaultHasher::new();
         opcodes.hash(&mut hasher);
         let opcode_hash = hasher.finish();
 
         Symbol {
-            id,
             name,
             bytes,
             opcodes,
+            vram,
             offset,
             is_decompiled,
             exact_hash,

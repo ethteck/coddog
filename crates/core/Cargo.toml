@@ -16,4 +16,4 @@ editdistancek = "1.0.2"
 object = "0.36.7"
 mapfile_parser = "2.7.5"
 ppc750cl = "0.3.2"
-rabbitizer = { version = "2.0.0-alpha.1", features = ["all_extensions"] }
+rabbitizer = { path = "../../../rabbitizer/src/rabbitizer", version = "2.0.0-alpha.2", features = ["all_extensions"] }

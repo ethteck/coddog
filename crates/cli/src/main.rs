@@ -2,9 +2,8 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, get_submatches,
-    ingest::{read_elf, read_map},
-    Binary, Platform, Symbol,
+    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
+    Symbol,
 };
 use coddog_db::{db_delete_project, DBSymbol, DBWindow};
 use colored::*;
@@ -480,8 +479,8 @@ async fn main() -> Result<()> {
             threshold,
             min_len,
         } => {
-            let config1 = read_config(yaml1.to_path_buf())?;
-            let config2 = read_config(yaml2.to_path_buf())?;
+            let config1 = read_config(yaml1.clone())?;
+            let config2 = read_config(yaml2.clone())?;
 
             let version1 = config1.get_version_by_name(version1).unwrap();
             let version2 = config2.get_version_by_name(version2).unwrap();
@@ -506,7 +505,7 @@ async fn main() -> Result<()> {
             main_version,
             other_yamls,
         } => {
-            let main_config = read_config(main_yaml.to_path_buf())?;
+            let main_config = read_config(main_yaml.clone())?;
             let main_version = main_config.get_version_by_name(main_version).unwrap();
             let main_symbols = collect_symbols(
                 &main_version,
@@ -520,7 +519,7 @@ async fn main() -> Result<()> {
             };
 
             for other_yaml in other_yamls {
-                let other_config = read_config(other_yaml.to_path_buf())?;
+                let other_config = read_config(other_yaml.clone())?;
 
                 for other_version in &other_config.versions {
                     let other_symbols = collect_symbols(
@@ -548,7 +547,7 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Db(DbCommands::AddProject { yaml }) => {
-            let config = read_config(yaml.to_path_buf())?;
+            let config = read_config(yaml.clone())?;
             let platform = Platform::of(&config.platform).unwrap();
             let window_size = std::env::var("DB_WINDOW_SIZE")
                 .expect("DB_WINDOW_SIZE must be set")
@@ -575,9 +574,9 @@ async fn main() -> Result<()> {
                 pb.format("[=>-]");
 
                 if config.versions.len() == 1 {
-                    pb.message("Importing hashes ")
+                    pb.message("Importing hashes ");
                 } else {
-                    pb.message(format!("Importing hashes ({}) ", version.fullname).as_str())
+                    pb.message(format!("Importing hashes ({}) ", version.fullname).as_str());
                 }
 
                 for (symbol, id) in symbols.iter().zip(symbol_ids) {
@@ -598,7 +597,7 @@ async fn main() -> Result<()> {
             let project = db_search_project_by_name(pool.clone(), name).await?;
 
             db_delete_project(pool.clone(), project).await?;
-            println!("Deleted project {}", name);
+            println!("Deleted project {name}");
         }
         Commands::Db(DbCommands::Match { query, match_type }) => {
             let pool = coddog_db::db_init().await?;
@@ -638,18 +637,9 @@ async fn main() -> Result<()> {
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
-            let query_hashes =
-                coddog_db::db_query_windows_by_symbol_id_opcode(pool.clone(), symbol.id).await?;
-
-            if query_hashes.is_empty() {
-                println!("No hashes found for the given symbol '{}'", query);
-                return Ok(());
-            }
-
             let before_time = SystemTime::now();
-            let matching_hashes = coddog_db::db_query_windows_by_symbol_hashes_opcode(
+            let matching_hashes = coddog_db::db_query_windows_by_symbol_id(
                 pool.clone(),
-                &query_hashes,
                 symbol.id,
                 (window_size - db_window_size) as i64,
             )
@@ -674,7 +664,7 @@ async fn main() -> Result<()> {
             let mut symbol_map: HashMap<i64, String> = HashMap::new();
 
             let results = SubmatchResults::from_db_hashes(
-                matching_hashes,
+                &matching_hashes,
                 &mut project_map,
                 &mut source_map,
                 &mut symbol_map,
@@ -696,7 +686,7 @@ struct SubmatchResults {
 
 impl SubmatchResults {
     fn from_db_hashes(
-        hashes: Vec<DBWindow>,
+        hashes: &[DBWindow],
         project_map: &mut HashMap<i64, String>,
         source_map: &mut HashMap<i64, String>,
         symbol_map: &mut HashMap<i64, String>,

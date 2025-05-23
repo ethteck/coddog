@@ -1107,6 +1107,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
+name = "ordered-float"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2c1f9f56e534ac6a9b8a4600bdf0f530fb393b5f393e7b4d03489c3cf0c3f01"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1250,11 +1259,10 @@ checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
 
 [[package]]
 name = "rabbitizer"
-version = "2.0.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64080591f74ce1fc31da186bbc915cb240dc6097b8df4bbd450c8a3fa493777d"
+version = "2.0.0-alpha.2"
 dependencies = [
  "bitflags 2.9.0",
+ "ordered-float",
 ]
 
 [[package]]

@@ -1,0 +1,1 @@
+~/repos/pokemonsnap/tools/ido7.1/cc test_mips.c -O2 -G 0 -non_shared -c -o test_mips.o

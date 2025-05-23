@@ -378,22 +378,6 @@ pub async fn db_query_symbols_by_exact_hash(
     Ok(res)
 }
 
-pub async fn db_query_windows_by_symbol_id_opcode(
-    conn: Pool<Postgres>,
-    id: i64,
-) -> Result<Vec<i64>> {
-    let rows = sqlx::query!(
-        "SELECT windows.hash FROM windows WHERE symbol_id = $1 ORDER BY windows.pos",
-        id
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res: Vec<i64> = rows.iter().map(|row| row.hash).collect();
-
-    Ok(res)
-}
-
 #[derive(Clone, Debug)]
 pub struct DBWindow {
     pub query_start: i32,
@@ -406,9 +390,8 @@ pub struct DBWindow {
     pub project_id: i64,
     pub project_name: String,
 }
-pub async fn db_query_windows_by_symbol_hashes_opcode(
+pub async fn db_query_windows_by_symbol_id(
     conn: Pool<Postgres>,
-    hashes: &[i64],
     symbol_id: i64,
     min_seq_len: i64,
 ) -> Result<Vec<DBWindow>> {
