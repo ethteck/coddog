@@ -10,14 +10,13 @@ use crate::ingest::CoddogRel;
 use editdistancek::edit_distance_bounded;
 use object::Endianness;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Arch {
-    Unknown,
     Mips,
     Ppc,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Platform {
     N64,
     Psx,
@@ -59,7 +58,7 @@ impl Platform {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Symbol {
     /// the name of the symbol
     pub name: String,
@@ -71,6 +70,8 @@ pub struct Symbol {
     pub vram: usize,
     /// the file offset of the symbol
     pub offset: usize,
+    /// the length of the symbol in bytes
+    pub length: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
     /// the opcode hash for the symbol
@@ -104,6 +105,18 @@ impl Symbol {
         platform: Platform,
         relocations: &BTreeMap<u64, CoddogRel>,
     ) -> Symbol {
+        let mut bytes = bytes;
+        match platform.arch() {
+            Arch::Mips | Arch::Ppc => {
+                while bytes.len() >= 4 && bytes[bytes.len() - 4..] == [0, 0, 0, 0] {
+                    bytes.truncate(bytes.len() - 4);
+                }
+            }
+        }
+
+        // TODO maybe remove field
+        let length = bytes.len();
+
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         let exact_hash = hasher.finish();
@@ -118,6 +131,7 @@ impl Symbol {
         Symbol {
             name,
             bytes,
+            length,
             opcodes,
             vram,
             offset,
@@ -129,28 +143,27 @@ impl Symbol {
     }
 
     pub fn get_exact_hashes(&self, window_size: usize) -> Vec<u64> {
-        Self::get_hashes(&self.bytes, window_size)
+        get_hashes(&self.bytes, window_size)
     }
 
     pub fn get_opcode_hashes(&self, window_size: usize) -> Vec<u64> {
-        Self::get_hashes(&self.opcodes, window_size)
+        get_hashes(&self.opcodes, window_size)
+    }
+}
+pub fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
+    let mut data = data.to_vec();
+
+    if data.len() < window_size {
+        data.resize(window_size, Default::default());
     }
 
-    fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
-        let mut data = data.to_vec();
-
-        if data.len() < window_size {
-            data.resize(window_size, Default::default());
-        }
-
-        data.windows(window_size)
-            .map(|x| {
-                let mut hasher = DefaultHasher::new();
-                (*x).hash(&mut hasher);
-                hasher.finish()
-            })
-            .collect()
-    }
+    data.windows(window_size)
+        .map(|x| {
+            let mut hasher = DefaultHasher::new();
+            (*x).hash(&mut hasher);
+            hasher.finish()
+        })
+        .collect()
 }
 
 pub fn get_submatches(hashes_1: &[u64], hashes_2: &[u64], window_size: usize) -> Vec<InsnSeqMatch> {

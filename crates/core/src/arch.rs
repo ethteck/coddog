@@ -1,11 +1,10 @@
-use crate::ingest::CoddogRel;
 use crate::Platform;
+use crate::ingest::CoddogRel;
 use object::Endian;
-use ppc750cl::Opcode;
-use rabbitizer::operands::ValuedOperand;
 use rabbitizer::IsaExtension::{R3000GTE, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
 use rabbitizer::Vram;
+use rabbitizer::operands::ValuedOperand;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -22,8 +21,8 @@ fn get_rabbitizer_instruction(word: u32, platform: Platform) -> rabbitizer::Inst
     )
 }
 
-pub(crate) fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
-    let mut insns: Vec<u16> = match platform {
+pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
+    match platform {
         Platform::N64 | Platform::Psx | Platform::Ps2 => bytes
             .chunks_exact(4)
             .map(|chunk| {
@@ -37,16 +36,12 @@ pub(crate) fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
         Platform::Gc | Platform::Wii => bytes
             .chunks_exact(4)
             .map(|c| {
-                Opcode::_detect(platform.endianness().read_u32_bytes(c.try_into().unwrap())) as u16
+                ppc750cl::Opcode::_detect(
+                    platform.endianness().read_u32_bytes(c.try_into().unwrap()),
+                ) as u16
             })
             .collect(),
-    };
-
-    // Remove trailing nops
-    while !insns.is_empty() && insns[insns.len() - 1] == 0 {
-        insns.pop();
     }
-    insns
 }
 
 pub(crate) fn get_equivalence_hash(
@@ -61,7 +56,6 @@ pub(crate) fn get_equivalence_hash(
 
     match platform {
         Platform::N64 | Platform::Psx | Platform::Ps2 => {
-            let vram_end = vram + bytes.len();
             let mut hashed_reloc;
 
             for (i, chunk) in bytes.chunks_exact(4).enumerate() {
@@ -118,15 +112,10 @@ pub(crate) fn get_equivalence_hash(
                                 vo.hash(&mut hasher);
                             }
                         }
-                        ValuedOperand::core_branch_target_label(o) => {
+                        ValuedOperand::core_branch_target_label(_) => {
                             assert!(
                                 !hashed_reloc,
                                 "Relocation and branch target label at the same time"
-                            );
-                            let branch_target = o.inner() + cur_vram as i32;
-                            assert!(
-                                !(branch_target < vram as i32 || branch_target >= vram_end as i32),
-                                "Branch offset out of range: {branch_target:#x}"
                             );
                             vo.hash(&mut hasher);
                         }

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS symbols
 (
     id          BIGSERIAL PRIMARY KEY,
     pos         BIGINT NOT NULL,
+    len         INT    NOT NULL,
     name        TEXT   NOT NULL,
     opcode_hash BIGINT NOT NULL,
     equiv_hash  BIGINT NOT NULL,

@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
-    Symbol,
+    self as core, Binary, Platform, Symbol, get_submatches,
+    ingest::{read_elf, read_map},
 };
-use coddog_db::{db_delete_project, DBSymbol, DBWindow};
+use coddog_db::{DBSymbol, DBWindow, db_delete_project};
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
@@ -93,7 +93,7 @@ enum Commands {
         min_len: usize,
     },
 
-    /// Compare one binary to one or more others, showing the functions in common between them
+    /// Compare a binary in one project to one or more others, showing the functions in common between them
     CompareN {
         /// Path to the main decomp.yaml
         main_yaml: PathBuf,
@@ -105,6 +105,14 @@ enum Commands {
         other_yamls: Vec<PathBuf>,
     },
 
+    /// Compare one raw binary to one or more projects' binaries, showing the functions in common between them
+    CompareRaw {
+        /// Path to the main binary
+        query_bin: PathBuf,
+
+        /// Path to other projects' decomp.yaml files
+        yamls: Vec<PathBuf>,
+    },
     /// Database management commands
     #[command(subcommand)]
     Db(DbCommands),
@@ -253,8 +261,8 @@ pub fn do_cluster(symbols: &[Symbol], threshold: f32, min_len: usize) {
     }
 }
 
-fn get_full_path(base_dir: &Path, config: &Version, name: &str) -> Option<PathBuf> {
-    config.paths.get(name).map(|path| {
+fn get_full_path(base_dir: &Path, config_path: Option<PathBuf>) -> Option<PathBuf> {
+    config_path.map(|path| {
         if path.is_relative() {
             base_dir.join(path)
         } else {
@@ -264,7 +272,7 @@ fn get_full_path(base_dir: &Path, config: &Version, name: &str) -> Option<PathBu
 }
 
 fn get_unmatched_funcs(base_dir: &Path, config: &Version) -> Option<Vec<String>> {
-    get_full_path(base_dir, config, "asm").map(|asm_dir| {
+    get_full_path(base_dir, config.paths.asm.clone()).map(|asm_dir| {
         let mut unmatched_funcs = Vec::new();
 
         for s_file in glob(asm_dir.join("**/*.s").to_str().unwrap()).unwrap() {
@@ -282,17 +290,18 @@ fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<
     let platform =
         Platform::of(platform).unwrap_or_else(|| panic!("Invalid platform: {}", platform));
 
-    if let Some(elf_path) = get_full_path(base_dir, config, "elf") {
+    if let Some(elf_path) = get_full_path(base_dir, config.paths.elf.clone()) {
         let elf_data = fs::read(elf_path)?;
         return read_elf(platform, &unmatched_funcs, elf_data);
     }
 
-    if let (Some(baserom_path), Some(map_path)) = (
-        get_full_path(base_dir, config, "baserom"),
-        get_full_path(base_dir, config, "map"),
+    if let (Some(target), Some(map_path)) = (
+        get_full_path(base_dir, Some(config.paths.target.clone())),
+        get_full_path(base_dir, Some(config.paths.map.clone())),
     ) {
-        let rom_bytes = fs::read(baserom_path)?;
-        return read_map(platform, unmatched_funcs, rom_bytes, map_path);
+        let target_bytes = fs::read(target)?;
+        let map_str = fs::read_to_string(map_path)?;
+        return read_map(platform, unmatched_funcs, target_bytes, &map_str);
     }
 
     Err(anyhow!("No elf or mapfile found"))
@@ -411,16 +420,14 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
 fn get_cwd_symbols() -> Result<Vec<Symbol>> {
     let config = scan_for_config()?;
 
-    // let version = if config.versions.len() > 1 {
-    //     let res = Select::new("Which version do you want to use?", config.versions).prompt();
-    //     res?
-    // } else {
-    //     config.versions.first().unwrap().clone()
-    // };
+    let version = if config.versions.len() > 1 {
+        let res = Select::new("Which version do you want to use?", config.versions).prompt();
+        res?
+    } else {
+        config.versions.first().unwrap().clone()
+    };
 
-    let version = config.versions.first().unwrap();
-
-    collect_symbols(version, &std::env::current_dir()?, &config.platform)
+    collect_symbols(&version, &std::env::current_dir()?, &config.platform)
 }
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> Result<DBSymbol> {
@@ -546,6 +553,57 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::CompareRaw { query_bin, yamls } => {
+            let query_bin_data = fs::read(query_bin)?;
+            let mut symbol_hashes = HashMap::new();
+            let mut platform = None;
+            let window_size = 20;
+
+            for yaml in yamls {
+                let config = read_config(yaml.clone())?;
+                let cur_platform = Platform::of(&config.platform).unwrap();
+
+                if platform.is_none() {
+                    platform = Some(cur_platform);
+                } else if platform.unwrap() != cur_platform {
+                    return Err(anyhow!("All projects must be for the same platform"));
+                }
+
+                for version in &config.versions {
+                    let symbols =
+                        collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
+                    for sym in symbols {
+                        if sym.opcodes.len() < window_size {
+                            continue;
+                        }
+                        let hashes = sym.get_opcode_hashes(window_size);
+                        let first_hash = *hashes.first().unwrap();
+                        symbol_hashes.insert(
+                            first_hash,
+                            (config.name.clone(), version.fullname.clone(), sym.clone()),
+                        );
+                    }
+                }
+            }
+
+            let platform =
+                platform.ok_or_else(|| anyhow!("No platform found in provided configs"))?;
+
+            let opcodes = core::arch::get_opcodes(&query_bin_data, platform);
+            for (i, hash) in core::get_hashes(&opcodes, window_size).iter().enumerate() {
+                if let Some((project_name, version_name, symbol)) = symbol_hashes.get(hash) {
+                    if opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes {
+                        println!(
+                            "0x{:X} - {} {}: {}",
+                            i * 4,
+                            project_name.color(BINARY_COLORS[0]),
+                            version_name.color(BINARY_COLORS[0]),
+                            cli_fullname(symbol)
+                        );
+                    }
+                }
+            }
+        }
         Commands::Db(DbCommands::AddProject { yaml }) => {
             let config = read_config(yaml.clone())?;
             let platform = Platform::of(&config.platform).unwrap();
@@ -560,7 +618,8 @@ async fn main() -> Result<()> {
 
             for version in &config.versions {
                 let baserom_path =
-                    get_full_path(yaml.parent().unwrap(), version, "baserom").unwrap();
+                    get_full_path(yaml.parent().unwrap(), Some(version.paths.target.clone()))
+                        .unwrap();
                 let source_id =
                     coddog_db::add_source(&mut tx, project_id, &version.fullname, &baserom_path)
                         .await?;

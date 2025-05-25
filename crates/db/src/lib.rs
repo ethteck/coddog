@@ -1,6 +1,6 @@
 use anyhow::Result;
 use coddog_core::{Platform, Symbol};
-use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
+use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::{fs, fs::File, io::Read};
@@ -83,7 +83,14 @@ pub async fn add_source(
     }
 }
 
-type BulkSymbolData = (Vec<i64>, Vec<String>, Vec<i64>, Vec<i64>, Vec<i64>);
+type BulkSymbolData = (
+    Vec<i64>,
+    Vec<i64>,
+    Vec<String>,
+    Vec<i64>,
+    Vec<i64>,
+    Vec<i64>,
+);
 
 pub async fn add_symbols(
     tx: &mut Transaction<'_, Postgres>,
@@ -94,27 +101,30 @@ pub async fn add_symbols(
 
     for chunk in symbols.chunks(CHUNK_SIZE) {
         let source_ids = vec![source_id; chunk.len()];
-        let (offsets, names, opcode_hashes, equiv_hashes, exact_hashes): BulkSymbolData = chunk
-            .iter()
-            .map(|s| {
-                (
-                    s.offset as i64,
-                    s.name.clone(),
-                    s.opcode_hash as i64,
-                    s.equiv_hash as i64,
-                    s.exact_hash as i64,
-                )
-            })
-            .collect();
+        let (offsets, lens, names, opcode_hashes, equiv_hashes, exact_hashes): BulkSymbolData =
+            chunk
+                .iter()
+                .map(|s| {
+                    (
+                        s.offset as i64,
+                        s.length as i64,
+                        s.name.clone(),
+                        s.opcode_hash as i64,
+                        s.equiv_hash as i64,
+                        s.exact_hash as i64,
+                    )
+                })
+                .collect();
 
         let rows = sqlx::query!(
             "
-                INSERT INTO symbols (source_id, pos, name, opcode_hash, equiv_hash, exact_hash)
-                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[])
+                INSERT INTO symbols (source_id, pos, len, name, opcode_hash, equiv_hash, exact_hash)
+                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[])
                 RETURNING id
         ",
             &source_ids as &[i64],
             &offsets as &[i64],
+            &lens as &[i64],
             &names,
             &opcode_hashes,
             &equiv_hashes,
@@ -167,6 +177,7 @@ pub async fn add_symbol_window_hashes(
 pub struct DBSymbol {
     pub id: i64,
     pub pos: i64,
+    pub len: i32,
     pub name: String,
     pub opcode_hash: i64,
     pub equiv_hash: i64,
@@ -231,7 +242,7 @@ pub async fn db_delete_project(conn: Pool<Postgres>, id: i64) -> Result<()> {
 pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, 
+    SELECT symbols.id, symbols.pos, symbols.len,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
     FROM symbols
@@ -248,6 +259,7 @@ pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Resu
         .map(|row| DBSymbol {
             id: row.id,
             pos: row.pos,
+            len: row.len,
             name: query.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
@@ -268,7 +280,7 @@ pub async fn db_query_symbols_by_opcode_hash(
 ) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.name, 
+    SELECT symbols.id, symbols.pos, symbols.len, symbols.name, 
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
             sources.name AS source_name, projects.name AS project_name, projects.id as project_id
@@ -287,6 +299,7 @@ pub async fn db_query_symbols_by_opcode_hash(
         .map(|row| DBSymbol {
             id: row.id,
             pos: row.pos,
+            len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
@@ -307,7 +320,7 @@ pub async fn db_query_symbols_by_equiv_hash(
 ) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.name, 
+    SELECT symbols.id, symbols.pos, symbols.len, symbols.name, 
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
             sources.name AS source_name, projects.name AS project_name, projects.id as project_id
@@ -326,6 +339,7 @@ pub async fn db_query_symbols_by_equiv_hash(
         .map(|row| DBSymbol {
             id: row.id,
             pos: row.pos,
+            len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
@@ -346,7 +360,7 @@ pub async fn db_query_symbols_by_exact_hash(
 ) -> Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.name,
+    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
             sources.name AS source_name, projects.name AS project_name, projects.id as project_id
         FROM symbols
@@ -364,6 +378,7 @@ pub async fn db_query_symbols_by_exact_hash(
         .map(|row| DBSymbol {
             id: row.id,
             pos: row.pos,
+            len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,

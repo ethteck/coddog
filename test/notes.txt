@@ -1,1 +1,3 @@
-~/repos/pokemonsnap/tools/ido7.1/cc test_mips.c -O2 -G 0 -non_shared -c -o test_mips.o
+~/repos/pokemonsnap/tools/ido7.1/cc simple.c -O2 -G 0 -non_shared -c -o simple_mips.o
+mips-linux-gnu-ld -T simple.ld simple_mips.o -Map simple_mips.map -o simple_mips_linked.o
+mips-linux-gnu-objcopy -Obinary simple_mips_linked.o simple_mips_raw.bin

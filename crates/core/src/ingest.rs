@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use anyhow::Result;
 use mapfile_parser::MapFile;
 use object::{
-    elf, Endian, File, Object, ObjectSection, ObjectSymbol, Relocation,
-    RelocationFlags, RelocationTarget,
+    Endian, File, Object, ObjectSection, ObjectSymbol, Relocation, RelocationFlags,
+    RelocationTarget, elf,
 };
 
 use crate::ingest::CoddogRel::SymbolTarget;
@@ -158,20 +157,19 @@ pub fn read_map(
     platform: Platform,
     unmatched_funcs: Option<Vec<String>>,
     rom_bytes: Vec<u8>,
-    map_path: PathBuf,
+    map_str: &str,
 ) -> Result<Vec<Symbol>> {
-    let mut mapfile = MapFile::new();
-    mapfile.parse_map_contents(std::fs::read_to_string(map_path)?.as_str());
+    let mapfile = MapFile::new_from_gnu_map_str(map_str);
     let ret: Vec<Symbol> = mapfile
         .segments_list
         .iter()
-        .flat_map(|x| x.files_list.iter())
+        .flat_map(|x| x.sections_list.iter())
         .filter(|x| x.section_type == ".text")
         .flat_map(|x| x.symbols.iter())
-        .filter(|x| x.vrom.is_some() && x.size.is_some())
+        .filter(|x| x.vrom.is_some())
         .map(|x| {
             let start = x.vrom.unwrap() as usize;
-            let end = start + x.size.unwrap() as usize;
+            let end = start + x.size as usize;
             let raw = &rom_bytes[start..end];
 
             Symbol::new(
@@ -195,12 +193,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_elf() {
-        let elf_data = include_bytes!("../../../test/test_mips.o").to_vec();
-        let unmatched_funcs = None;
-        let platform = Platform::N64;
-        let symbols = read_elf(platform, &unmatched_funcs, elf_data).unwrap();
+    fn test_simple_mips() {
+        let elf_data = include_bytes!("../../../test/simple_mips.o").to_vec();
+        let symbols = read_elf(Platform::N64, &None, elf_data).unwrap();
         assert!(!symbols.is_empty());
-        assert_eq!(symbols[0].equiv_hash, symbols[3].equiv_hash);
+
+        let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
+        let tf2 = symbols.iter().find(|s| s.name == "test_2").unwrap();
+
+        assert_eq!(tf1.opcode_hash, tf2.opcode_hash);
+        assert_eq!(tf1.equiv_hash, tf2.equiv_hash);
+        assert_ne!(tf1.exact_hash, tf2.exact_hash);
+
+        let math_op_1 = symbols.iter().find(|s| s.name == "math_op_1").unwrap();
+        let math_op_1_dup = symbols.iter().find(|s| s.name == "math_op_1_dup").unwrap();
+        assert_eq!(math_op_1.opcode_hash, math_op_1_dup.opcode_hash);
+        assert_eq!(math_op_1.equiv_hash, math_op_1_dup.equiv_hash);
+        assert_eq!(math_op_1.exact_hash, math_op_1_dup.exact_hash);
+    }
+
+    #[test]
+    fn test_simple_mips_linked() {
+        let elf_data = include_bytes!("../../../test/simple_mips_linked.o").to_vec();
+        let symbols = read_elf(Platform::N64, &None, elf_data).unwrap();
+        assert!(!symbols.is_empty());
+
+        let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
+        let tf2 = symbols.iter().find(|s| s.name == "test_2").unwrap();
+
+        assert_eq!(tf1.opcode_hash, tf2.opcode_hash);
+        // TODO need to figure out what to do when we have no relocations
+        //assert_eq!(tf1.equiv_hash, tf2.equiv_hash);
+        assert_ne!(tf1.exact_hash, tf2.exact_hash);
+
+        let math_op_1 = symbols.iter().find(|s| s.name == "math_op_1").unwrap();
+        let math_op_1_dup = symbols.iter().find(|s| s.name == "math_op_1_dup").unwrap();
+        assert_eq!(math_op_1.opcode_hash, math_op_1_dup.opcode_hash);
+        assert_eq!(math_op_1.equiv_hash, math_op_1_dup.equiv_hash);
+        assert_eq!(math_op_1.exact_hash, math_op_1_dup.exact_hash);
+    }
+
+    #[test]
+    fn test_simple_mips_raw() {
+        let rom_bytes = include_bytes!("../../../test/simple_mips_raw.bin").to_vec();
+        let map_str = include_str!("../../../test/simple_mips.map");
+        let symbols = read_map(Platform::N64, None, rom_bytes, &map_str).unwrap();
+        assert!(!symbols.is_empty());
+
+        let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
+        let tf2 = symbols.iter().find(|s| s.name == "test_2").unwrap();
+
+        assert_eq!(tf1.opcode_hash, tf2.opcode_hash);
+        // TODO need to figure out what to do when we have no relocations
+        //assert_eq!(tf1.equiv_hash, tf2.equiv_hash);
+        assert_ne!(tf1.exact_hash, tf2.exact_hash);
+
+        let math_op_1 = symbols.iter().find(|s| s.name == "math_op_1").unwrap();
+        let math_op_1_dup = symbols.iter().find(|s| s.name == "math_op_1_dup").unwrap();
+        assert_eq!(math_op_1.opcode_hash, math_op_1_dup.opcode_hash);
+        assert_eq!(math_op_1.equiv_hash, math_op_1_dup.equiv_hash);
+        assert_eq!(math_op_1.exact_hash, math_op_1_dup.exact_hash);
     }
 }
