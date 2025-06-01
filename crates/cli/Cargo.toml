@@ -12,7 +12,7 @@ A tool for finding matching sequences of code among binaries
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5.38", features = ["derive"] }
+clap = { version = "4.5.39", features = ["derive"] }
 coddog-db = { path = "../db" }
 coddog-core = { path = "../core" }
 colored = "3.0.0"
