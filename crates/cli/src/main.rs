@@ -1,11 +1,12 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, Binary, Platform, Symbol, get_submatches,
-    ingest::{read_elf, read_map},
+    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
+    Symbol,
 };
-use coddog_db::{DBSymbol, DBWindow, db_delete_project};
+use coddog_db::projects::CreateProjectRequest;
+use coddog_db::{DBSymbol, DBWindow};
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use dotenvy::dotenv;
@@ -41,6 +42,7 @@ struct Cli {
 
 enum Commands {
     /// Find functions similar to the query function
+    /// Uses project in the current directory
     Match {
         /// Name of the query function
         query: String,
@@ -51,6 +53,7 @@ enum Commands {
     },
 
     /// Cluster functions by similarity, showing possible duplicates
+    /// Uses project in the current directory
     Cluster {
         /// Similarity threshold
         #[arg(short, long, default_value = "0.985")]
@@ -62,6 +65,7 @@ enum Commands {
     },
 
     /// Find chunks of code similar to those in the query function
+    /// Uses project in the current directory
     Submatch {
         /// Name of the query function
         query: String,
@@ -431,7 +435,7 @@ fn get_cwd_symbols() -> Result<Vec<Symbol>> {
 }
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> Result<DBSymbol> {
-    let symbols = coddog_db::db_query_symbols_by_name(conn, name).await?;
+    let symbols = coddog_db::symbols::query_by_name(conn, name).await?;
 
     if symbols.is_empty() {
         return Err(anyhow!("No symbols found with the name '{}'", name));
@@ -446,7 +450,7 @@ async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> Result<DB
 }
 
 async fn db_search_project_by_name(conn: Pool<Postgres>, name: &str) -> Result<i64> {
-    let projects = coddog_db::db_query_projects_by_name(conn, name).await?;
+    let projects = coddog_db::projects::query_by_name(conn, name).await?;
 
     if projects.is_empty() {
         return Err(anyhow!("No projects found with the name '{}'", name));
@@ -611,22 +615,31 @@ async fn main() -> Result<()> {
                 .expect("DB_WINDOW_SIZE must be set")
                 .parse::<usize>()?;
 
-            let pool = coddog_db::db_init().await?;
-            let mut tx = pool.begin().await?;
+            let pool = coddog_db::init().await?;
 
-            let project_id = coddog_db::add_project(&mut tx, &config.name, platform).await?;
+            let project_id = coddog_db::projects::create(
+                pool.clone(),
+                &CreateProjectRequest {
+                    name: config.name.clone(),
+                    platform: platform as i32,
+                    repo: config.repo,
+                },
+            )
+            .await?;
+
+            let mut tx = pool.begin().await?;
 
             for version in &config.versions {
                 let baserom_path =
                     get_full_path(yaml.parent().unwrap(), Some(version.paths.target.clone()))
                         .unwrap();
                 let source_id =
-                    coddog_db::add_source(&mut tx, project_id, &version.fullname, &baserom_path)
+                    coddog_db::create_source(&mut tx, project_id, &version.fullname, &baserom_path)
                         .await?;
 
                 let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
 
-                let symbol_ids = coddog_db::add_symbols(&mut tx, source_id, &symbols).await;
+                let symbol_ids = coddog_db::symbols::create(&mut tx, source_id, &symbols).await;
 
                 let mut pb = ProgressBar::new(symbols.len() as u64);
 
@@ -643,7 +656,7 @@ async fn main() -> Result<()> {
 
                     let opcode_hashes = symbol.get_opcode_hashes(window_size);
 
-                    coddog_db::add_symbol_window_hashes(&mut tx, &opcode_hashes, id).await?;
+                    coddog_db::create_symbol_window_hashes(&mut tx, &opcode_hashes, id).await?;
                 }
                 println!();
             }
@@ -651,27 +664,27 @@ async fn main() -> Result<()> {
             println!("Imported project {} ", config.name);
         }
         Commands::Db(DbCommands::DeleteProject { name }) => {
-            let pool = coddog_db::db_init().await?;
+            let pool = coddog_db::init().await?;
 
             let project = db_search_project_by_name(pool.clone(), name).await?;
 
-            db_delete_project(pool.clone(), project).await?;
+            coddog_db::projects::delete(pool.clone(), project).await?;
             println!("Deleted project {name}");
         }
         Commands::Db(DbCommands::Match { query, match_type }) => {
-            let pool = coddog_db::db_init().await?;
+            let pool = coddog_db::init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
             let matches = match match_type {
                 MatchType::Opcode => {
-                    coddog_db::db_query_symbols_by_opcode_hash(pool.clone(), &symbol).await?
+                    coddog_db::symbols::query_by_opcode_hash(pool.clone(), &symbol).await?
                 }
                 MatchType::Equivalent => {
-                    coddog_db::db_query_symbols_by_equiv_hash(pool.clone(), &symbol).await?
+                    coddog_db::symbols::query_by_equiv_hash(pool.clone(), &symbol).await?
                 }
                 MatchType::Exact => {
-                    coddog_db::db_query_symbols_by_exact_hash(pool.clone(), &symbol).await?
+                    coddog_db::symbols::query_by_exact_hash(pool.clone(), &symbol).await?
                 }
             };
 
@@ -692,12 +705,12 @@ async fn main() -> Result<()> {
                 return Err(anyhow!("Window size must be at least {}", db_window_size));
             }
 
-            let pool = coddog_db::db_init().await?;
+            let pool = coddog_db::init().await?;
 
             let symbol = db_search_symbol_by_name(pool.clone(), query).await?;
 
             let before_time = SystemTime::now();
-            let matching_hashes = coddog_db::db_query_windows_by_symbol_id(
+            let matching_hashes = coddog_db::query_windows_by_symbol_id(
                 pool.clone(),
                 symbol.id,
                 (window_size - db_window_size) as i64,

@@ -1,13 +1,67 @@
+pub mod projects;
+pub mod symbols;
+
 use anyhow::Result;
-use coddog_core::{Platform, Symbol};
-use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
+use serde::Serialize;
+use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::{fs, fs::File, io::Read};
 
 const CHUNK_SIZE: usize = 100000;
 
-pub async fn db_init() -> Result<PgPool> {
+#[derive(Clone, Debug, Serialize)]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+    pub platform: i32,
+    pub repo: Option<String>,
+}
+
+impl Display for Project {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", self.name))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DBSymbol {
+    pub id: i64,
+    pub pos: i64,
+    pub len: i32,
+    pub name: String,
+    pub opcode_hash: i64,
+    pub equiv_hash: i64,
+    pub exact_hash: i64,
+    pub source_id: i64,
+    pub source_name: String,
+    pub project_id: i64,
+    pub project_name: String,
+}
+
+impl Display for DBSymbol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "{} version {} (offset {:X})",
+            self.project_name, self.source_name, self.pos,
+        ))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DBWindow {
+    pub query_start: i32,
+    pub match_start: i32,
+    pub length: i64,
+    pub symbol_id: i64,
+    pub symbol_name: String,
+    pub source_id: i64,
+    pub source_name: String,
+    pub project_id: i64,
+    pub project_name: String,
+}
+
+pub async fn init() -> Result<PgPool> {
     let db_path = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     if !Postgres::database_exists(&db_path).await.unwrap_or(false) {
         match Postgres::create_database(&db_path).await {
@@ -30,23 +84,7 @@ pub async fn db_init() -> Result<PgPool> {
     }
 }
 
-pub async fn add_project(
-    tx: &mut Transaction<'_, Postgres>,
-    name: &str,
-    platform: Platform,
-) -> Result<i64> {
-    let rec = sqlx::query!(
-        "INSERT INTO projects (name, platform) VALUES ($1, $2) RETURNING id",
-        name,
-        platform as i32
-    )
-    .fetch_one(&mut **tx)
-    .await?;
-
-    Ok(rec.id)
-}
-
-pub async fn add_source(
+pub async fn create_source(
     tx: &mut Transaction<'_, Postgres>,
     project_id: i64,
     name: &str,
@@ -59,7 +97,7 @@ pub async fn add_source(
 
     let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
     let target_path = Path::new(&bin_path);
-    let target_path = target_path.join(format!("{}.bin", hash));
+    let target_path = target_path.join(format!("{}/{}.bin", project_id, hash));
 
     match sqlx::query!(
         "INSERT INTO sources (project_id, hash, name, filepath) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -83,66 +121,7 @@ pub async fn add_source(
     }
 }
 
-type BulkSymbolData = (
-    Vec<i64>,
-    Vec<i64>,
-    Vec<String>,
-    Vec<i64>,
-    Vec<i64>,
-    Vec<i64>,
-);
-
-pub async fn add_symbols(
-    tx: &mut Transaction<'_, Postgres>,
-    source_id: i64,
-    symbols: &[Symbol],
-) -> Vec<i64> {
-    let mut ret = vec![];
-
-    for chunk in symbols.chunks(CHUNK_SIZE) {
-        let source_ids = vec![source_id; chunk.len()];
-        let (offsets, lens, names, opcode_hashes, equiv_hashes, exact_hashes): BulkSymbolData =
-            chunk
-                .iter()
-                .map(|s| {
-                    (
-                        s.offset as i64,
-                        s.length as i64,
-                        s.name.clone(),
-                        s.opcode_hash as i64,
-                        s.equiv_hash as i64,
-                        s.exact_hash as i64,
-                    )
-                })
-                .collect();
-
-        let rows = sqlx::query!(
-            "
-                INSERT INTO symbols (source_id, pos, len, name, opcode_hash, equiv_hash, exact_hash)
-                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[])
-                RETURNING id
-        ",
-            &source_ids as &[i64],
-            &offsets as &[i64],
-            &lens as &[i64],
-            &names,
-            &opcode_hashes,
-            &equiv_hashes,
-            &exact_hashes,
-        )
-            .fetch_all(&mut **tx)
-            .await
-            .unwrap();
-
-        for row in rows {
-            ret.push(row.id);
-        }
-    }
-
-    ret
-}
-
-pub async fn add_symbol_window_hashes(
+pub async fn create_symbol_window_hashes(
     tx: &mut Transaction<'_, Postgres>,
     hashes: &[u64],
     symbol_id: i64,
@@ -172,240 +151,7 @@ pub async fn add_symbol_window_hashes(
     }
     Ok(())
 }
-
-#[derive(Clone, Debug)]
-pub struct DBSymbol {
-    pub id: i64,
-    pub pos: i64,
-    pub len: i32,
-    pub name: String,
-    pub opcode_hash: i64,
-    pub equiv_hash: i64,
-    pub exact_hash: i64,
-    pub source_id: i64,
-    pub source_name: String,
-    pub project_id: i64,
-    pub project_name: String,
-}
-
-impl Display for DBSymbol {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{} version {} (offset {:X})",
-            self.project_name, self.source_name, self.pos,
-        ))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct DBProject {
-    pub id: i64,
-    pub name: String,
-}
-
-impl Display for DBProject {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", self.name))
-    }
-}
-
-pub async fn db_query_projects_by_name(
-    conn: Pool<Postgres>,
-    query: &str,
-) -> Result<Vec<DBProject>> {
-    let rows = sqlx::query!(
-        "SELECT projects.name, projects.id FROM projects WHERE projects.name LIKE $1",
-        query
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res: Vec<DBProject> = rows
-        .iter()
-        .map(|row| DBProject {
-            id: row.id,
-            name: query.to_string(),
-        })
-        .collect();
-
-    Ok(res)
-}
-
-pub async fn db_delete_project(conn: Pool<Postgres>, id: i64) -> Result<()> {
-    sqlx::query!("DELETE FROM projects WHERE id = $1", id)
-        .execute(&conn)
-        .await?;
-
-    Ok(())
-}
-
-pub async fn db_query_symbols_by_name(conn: Pool<Postgres>, query: &str) -> Result<Vec<DBSymbol>> {
-    let rows = sqlx::query!(
-        "
-    SELECT symbols.id, symbols.pos, symbols.len,
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
-           sources.name AS source_name, projects.name AS project_name, projects.id as project_id
-    FROM symbols
-    INNER JOIN sources ON sources.id = symbols.source_id
-    INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.name = $1",
-        query
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res: Vec<DBSymbol> = rows
-        .iter()
-        .map(|row| DBSymbol {
-            id: row.id,
-            pos: row.pos,
-            len: row.len,
-            name: query.to_string(),
-            opcode_hash: row.opcode_hash,
-            equiv_hash: row.equiv_hash,
-            exact_hash: row.exact_hash,
-            source_id: row.source_id,
-            source_name: row.source_name.clone(),
-            project_id: row.project_id,
-            project_name: row.project_name.clone(),
-        })
-        .collect();
-
-    Ok(res)
-}
-
-pub async fn db_query_symbols_by_opcode_hash(
-    conn: Pool<Postgres>,
-    symbol: &DBSymbol,
-) -> Result<Vec<DBSymbol>> {
-    let rows = sqlx::query!(
-        "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name, 
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
-           symbols.source_id,
-            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
-        FROM symbols
-    INNER JOIN sources ON sources.id = symbols.source_id
-    INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.opcode_hash = $1 AND NOT symbols.id = $2",
-        symbol.opcode_hash as i64,
-        symbol.id as i64
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res = rows
-        .iter()
-        .map(|row| DBSymbol {
-            id: row.id,
-            pos: row.pos,
-            len: row.len,
-            name: row.name.to_string(),
-            opcode_hash: row.opcode_hash,
-            equiv_hash: row.equiv_hash,
-            exact_hash: row.exact_hash,
-            source_id: row.source_id,
-            source_name: row.source_name.clone(),
-            project_id: row.project_id,
-            project_name: row.project_name.clone(),
-        })
-        .collect();
-
-    Ok(res)
-}
-
-pub async fn db_query_symbols_by_equiv_hash(
-    conn: Pool<Postgres>,
-    symbol: &DBSymbol,
-) -> Result<Vec<DBSymbol>> {
-    let rows = sqlx::query!(
-        "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name, 
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
-           symbols.source_id,
-            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
-        FROM symbols
-    INNER JOIN sources ON sources.id = symbols.source_id
-    INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.equiv_hash = $1 AND NOT symbols.id = $2",
-        symbol.equiv_hash as i64,
-        symbol.id as i64
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res = rows
-        .iter()
-        .map(|row| DBSymbol {
-            id: row.id,
-            pos: row.pos,
-            len: row.len,
-            name: row.name.to_string(),
-            opcode_hash: row.opcode_hash,
-            equiv_hash: row.equiv_hash,
-            exact_hash: row.exact_hash,
-            source_id: row.source_id,
-            source_name: row.source_name.clone(),
-            project_id: row.project_id,
-            project_name: row.project_name.clone(),
-        })
-        .collect();
-
-    Ok(res)
-}
-
-pub async fn db_query_symbols_by_exact_hash(
-    conn: Pool<Postgres>,
-    symbol: &DBSymbol,
-) -> Result<Vec<DBSymbol>> {
-    let rows = sqlx::query!(
-        "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
-            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
-        FROM symbols
-    INNER JOIN sources ON sources.id = symbols.source_id
-    INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",
-        symbol.exact_hash as i64,
-        symbol.id as i64
-    )
-    .fetch_all(&conn)
-    .await?;
-
-    let res = rows
-        .iter()
-        .map(|row| DBSymbol {
-            id: row.id,
-            pos: row.pos,
-            len: row.len,
-            name: row.name.to_string(),
-            opcode_hash: row.opcode_hash,
-            equiv_hash: row.equiv_hash,
-            exact_hash: row.exact_hash,
-            source_id: row.source_id,
-            source_name: row.source_name.clone(),
-            project_id: row.project_id,
-            project_name: row.project_name.clone(),
-        })
-        .collect();
-
-    Ok(res)
-}
-
-#[derive(Clone, Debug)]
-pub struct DBWindow {
-    pub query_start: i32,
-    pub match_start: i32,
-    pub length: i64,
-    pub symbol_id: i64,
-    pub symbol_name: String,
-    pub source_id: i64,
-    pub source_name: String,
-    pub project_id: i64,
-    pub project_name: String,
-}
-pub async fn db_query_windows_by_symbol_id(
+pub async fn query_windows_by_symbol_id(
     conn: Pool<Postgres>,
     symbol_id: i64,
     min_seq_len: i64,

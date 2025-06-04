@@ -1,3 +1,6 @@
 ~/repos/pokemonsnap/tools/ido7.1/cc simple.c -O2 -G 0 -non_shared -c -o simple_mips.o
 mips-linux-gnu-ld -T simple.ld simple_mips.o -Map simple_mips.map -o simple_mips_linked.o
 mips-linux-gnu-objcopy -Obinary simple_mips_linked.o simple_mips_raw.bin
+
+wine ~/repos/decomp.me/backend/compilers/gc_wii/mwcc_247_108/mwcceppc.exe -c -O2 -nostdinc -fp hardware -nodefaults simple.c -o simple_ppc.o
+wine ~/repos/decomp.me/backend/compilers/gc_wii/mwcc_247_108/mwldeppc.exe -fp hardware -nodefaults -lcf simple.lcf -r simple_ppc.o -o simple_ppc_linked.o

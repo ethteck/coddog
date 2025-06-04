@@ -1,5 +1,5 @@
 [package]
-name = "coddog-db"
+name = "coddog-api"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,12 +7,14 @@ license.workspace = true
 repository.workspace = true
 readme = "../../README.md"
 description = """
-A database library for finding matching sequences of code among binaries
+An api for finding matching sequences of code among binaries
 """
 
 [dependencies]
-anyhow = "1"
-blake3 = "1.0"
-coddog-core = { path = "../core" }
+axum = "0.8.4"
+tokio = { version = "1.45.1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenvy = "0.15.7"
 sqlx = { version = "0.8", features = ["macros", "migrate", "runtime-tokio", "postgres"] }
+coddog-db = { path = "../db" }

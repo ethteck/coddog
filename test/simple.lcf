@@ -1,0 +1,28 @@
+MEMORY
+{
+    text : origin = 0x80003100
+}
+
+SECTIONS
+{
+    GROUP:
+    {
+        .init ALIGN(0x4):{}
+        extab ALIGN(0x20):{}
+        extabindex ALIGN(0x20):{}
+        .text ALIGN(0x8):{}
+        .ctors ALIGN(0x20):{}
+        .dtors ALIGN(0x20):{}
+        .rodata ALIGN(0x20):{}
+        .data ALIGN(0x20):{}
+        .bss ALIGN(0x20):{}
+        .sdata ALIGN(0x4):{}
+        .sbss ALIGN(0x8):{}
+        .sdata2 ALIGN(0x20):{}
+        .sbss2 ALIGN(0x10):{}
+        .stack ALIGN(0x100):{}
+    } > text
+
+    __start = 0;
+    some_external_function = 0x00001000;
+}

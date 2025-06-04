@@ -12,24 +12,25 @@ Linker script and memory map
 LOAD simple_mips.o
 OUTPUT(simple_mips_linked.o elf32-tradbigmips)
 
-.text           0x00000000      0x230
- .text          0x00000000      0x230 simple_mips.o
+.text           0x00000000      0x2e0
+ .text          0x00000000      0x2e0 simple_mips.o
                 0x00000000                test_1
                 0x000000b8                test_2
-                0x00000170                math_op_1
-                0x000001c8                math_op_2
-                0x000001d0                math_op_1_dup
+                0x00000170                test_3
+                0x00000228                math_op_1
+                0x00000280                math_op_2
+                0x00000288                math_op_1_dup
 
-.rodata         0x00000230       0x30
- .rodata        0x00000230       0x30 simple_mips.o
+.rodata         0x000002e0       0x40
+ .rodata        0x000002e0       0x40 simple_mips.o
 
-.reginfo        0x00000260       0x18
- .reginfo       0x00000260       0x18 simple_mips.o
+.reginfo        0x00000320       0x18
+ .reginfo       0x00000320       0x18 simple_mips.o
 
-.data           0x00000280       0x10
- .data          0x00000280       0x10 simple_mips.o
-                0x00000280                cat
-                0x00000284                dog
+.data           0x00000340       0x10
+ .data          0x00000340       0x10 simple_mips.o
+                0x00000340                cat
+                0x00000344                dog
 
 .options        0x00000000       0x40
  .options       0x00000000       0x40 simple_mips.o
@@ -37,5 +38,5 @@ OUTPUT(simple_mips_linked.o elf32-tradbigmips)
 .gptab.data     0x00000000       0x18
  .gptab.data    0x00000000       0x18 simple_mips.o
 
-.mdebug         0x00000000      0x488
- .mdebug        0x00000000      0x450 simple_mips.o
+.mdebug         0x00000000      0x504
+ .mdebug        0x00000000      0x4e0 simple_mips.o

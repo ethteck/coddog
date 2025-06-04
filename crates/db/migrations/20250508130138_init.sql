@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS projects
     id       BIGSERIAL PRIMARY KEY,
     name     TEXT NOT NULL,
     platform INT  NOT NULL,
-    repo_url TEXT NULL
+    repo     TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sources
