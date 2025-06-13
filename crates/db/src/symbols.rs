@@ -1,5 +1,6 @@
 use crate::{DBSymbol, CHUNK_SIZE};
 use coddog_core::Symbol;
+use serde::Deserialize;
 use sqlx::{Pool, Postgres, Transaction};
 
 type BulkSymbolData = (
@@ -10,6 +11,11 @@ type BulkSymbolData = (
     Vec<i64>,
     Vec<i64>,
 );
+
+#[derive(Deserialize)]
+pub struct QuerySymbolsRequest {
+    pub name: String,
+}
 
 pub async fn create(
     tx: &mut Transaction<'_, Postgres>,
@@ -61,17 +67,20 @@ pub async fn create(
     ret
 }
 
-pub async fn query_by_name(conn: Pool<Postgres>, query: &str) -> anyhow::Result<Vec<DBSymbol>> {
+pub async fn query_by_name(
+    conn: Pool<Postgres>,
+    query: &QuerySymbolsRequest,
+) -> anyhow::Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.len,
+    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
            sources.name AS source_name, projects.name AS project_name, projects.id as project_id
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
     INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.name = $1",
-        query
+    WHERE symbols.name ILIKE $1",
+        query.name
     )
     .fetch_all(&conn)
     .await?;
@@ -82,7 +91,7 @@ pub async fn query_by_name(conn: Pool<Postgres>, query: &str) -> anyhow::Result<
             id: row.id,
             pos: row.pos,
             len: row.len,
-            name: query.to_string(),
+            name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
             exact_hash: row.exact_hash,
@@ -92,6 +101,38 @@ pub async fn query_by_name(conn: Pool<Postgres>, query: &str) -> anyhow::Result<
             project_name: row.project_name.clone(),
         })
         .collect();
+
+    Ok(res)
+}
+
+pub async fn query_by_id(conn: Pool<Postgres>, query: i64) -> anyhow::Result<Option<DBSymbol>> {
+    let row = sqlx::query!(
+        "
+    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+           sources.name AS source_name, projects.name AS project_name, projects.id as project_id
+    FROM symbols
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN projects on sources.project_id = projects.id
+    WHERE symbols.id = $1",
+        query
+    )
+    .fetch_optional(&conn)
+    .await?;
+
+    let res = row.map(|row| DBSymbol {
+        id: row.id,
+        pos: row.pos,
+        len: row.len,
+        name: row.name.to_string(),
+        opcode_hash: row.opcode_hash,
+        equiv_hash: row.equiv_hash,
+        exact_hash: row.exact_hash,
+        source_id: row.source_id,
+        source_name: row.source_name.clone(),
+        project_id: row.project_id,
+        project_name: row.project_name.clone(),
+    });
 
     Ok(res)
 }

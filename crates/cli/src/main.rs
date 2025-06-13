@@ -6,6 +6,7 @@ use coddog_core::{
     Symbol,
 };
 use coddog_db::projects::CreateProjectRequest;
+use coddog_db::symbols::QuerySymbolsRequest;
 use coddog_db::{DBSymbol, DBWindow};
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
@@ -124,10 +125,10 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum DbCommands {
-    /// Add a new project to the database, given a decomp.yaml file
+    /// Add a new project to the database, given a path to a repo
     AddProject {
-        /// Path to the project's decomp.yaml file
-        yaml: PathBuf,
+        /// Path to the project's repo
+        repo: PathBuf,
     },
     /// Delete a project from the database, removing its sources, symbols, and hashes
     DeleteProject {
@@ -435,7 +436,13 @@ fn get_cwd_symbols() -> Result<Vec<Symbol>> {
 }
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> Result<DBSymbol> {
-    let symbols = coddog_db::symbols::query_by_name(conn, name).await?;
+    let symbols = coddog_db::symbols::query_by_name(
+        conn,
+        &QuerySymbolsRequest {
+            name: name.to_string(),
+        },
+    )
+    .await?;
 
     if symbols.is_empty() {
         return Err(anyhow!("No symbols found with the name '{}'", name));
@@ -608,7 +615,8 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Db(DbCommands::AddProject { yaml }) => {
+        Commands::Db(DbCommands::AddProject { repo }) => {
+            let yaml = repo.join("decomp.yaml");
             let config = read_config(yaml.clone())?;
             let platform = Platform::of(&config.platform).unwrap();
             let window_size = std::env::var("DB_WINDOW_SIZE")
@@ -630,11 +638,11 @@ async fn main() -> Result<()> {
             let mut tx = pool.begin().await?;
 
             for version in &config.versions {
-                let baserom_path =
+                let target_path =
                     get_full_path(yaml.parent().unwrap(), Some(version.paths.target.clone()))
                         .unwrap();
                 let source_id =
-                    coddog_db::create_source(&mut tx, project_id, &version.fullname, &baserom_path)
+                    coddog_db::create_source(&mut tx, project_id, &version.fullname, &target_path)
                         .await?;
 
                 let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;

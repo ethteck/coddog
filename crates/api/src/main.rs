@@ -1,12 +1,14 @@
 use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::get;
+use axum::http::{HeaderValue, StatusCode};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use coddog_db::projects::CreateProjectRequest;
+use coddog_db::SymbolMetadata;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() {
@@ -27,6 +29,12 @@ async fn main() {
 
     println!("Listening on {}", server_address);
 
+    // Set up CORS
+    let cors_layer = CorsLayer::new()
+        .allow_methods(Any)
+        .allow_origin("http://localhost:3001".parse::<HeaderValue>().unwrap())
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/", get(|| async { "coddog" }))
         .route("/projects", get(get_projects).post(create_project))
@@ -36,7 +44,10 @@ async fn main() {
                 .patch(update_project)
                 .delete(delete_project),
         )
-        .with_state(db_pool);
+        .route("/symbols", post(query_symbols_by_name))
+        .route("/symbols/{id}", get(get_symbol))
+        .with_state(db_pool)
+        .layer(cors_layer);
 
     axum::serve(listener, app)
         .await
@@ -54,10 +65,7 @@ async fn get_projects(
         )
     })?;
 
-    Ok((
-        StatusCode::OK,
-        json!({"success": true, "projects": projects}).to_string(),
-    ))
+    Ok((StatusCode::OK, json!(projects).to_string()))
 }
 
 async fn create_project(
@@ -99,7 +107,7 @@ async fn update_project(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(req): Json<coddog_db::projects::UpdateProjectRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let res = coddog_db::projects::update(pg_pool, id, &req)
+    coddog_db::projects::update(pg_pool, id, &req)
         .await
         .map_err(|e| {
             eprintln!("Error updating project: {}", e);
@@ -109,14 +117,14 @@ async fn update_project(
             )
         })?;
 
-    Ok((StatusCode::OK, json!(res).to_string()))
+    Ok((StatusCode::OK, json!(()).to_string()))
 }
 
 async fn delete_project(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let res = coddog_db::projects::delete(pg_pool, id)
+    coddog_db::projects::delete(pg_pool, id)
         .await
         .map_err(|e| {
             eprintln!("Error deleting project: {}", e);
@@ -126,5 +134,93 @@ async fn delete_project(
             )
         })?;
 
-    Ok((StatusCode::NO_CONTENT, json!(res).to_string()))
+    Ok((StatusCode::NO_CONTENT, json!(()).to_string()))
+}
+
+async fn query_symbols_by_name(
+    State(pg_pool): State<PgPool>,
+    Json(req): Json<coddog_db::symbols::QuerySymbolsRequest>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let matches = coddog_db::symbols::query_by_name(pg_pool, &req)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching matches: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+
+    let matches: Vec<SymbolMetadata> = matches.iter().map(SymbolMetadata::from_db_symbol).collect();
+
+    Ok((StatusCode::OK, json!(matches).to_string()))
+}
+
+async fn get_symbol(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let query_sym = coddog_db::symbols::query_by_id(pg_pool.clone(), id)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching symbol by ID: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"success": false, "message": "Symbol not found"}).to_string(),
+            )
+        })?;
+
+    let exact_matches = coddog_db::symbols::query_by_exact_hash(pg_pool.clone(), &query_sym)
+        .await
+        .map_err(|e| {
+            eprintln!("Error getting exact matches: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+    let exact_matches: Vec<SymbolMetadata> = exact_matches
+        .iter()
+        .map(SymbolMetadata::from_db_symbol)
+        .collect();
+
+    let equivalent_matches = coddog_db::symbols::query_by_equiv_hash(pg_pool.clone(), &query_sym)
+        .await
+        .map_err(|e| {
+            eprintln!("Error getting equivalent matches: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+    let equivalent_matches: Vec<SymbolMetadata> = equivalent_matches
+        .iter()
+        .map(SymbolMetadata::from_db_symbol)
+        .collect();
+
+    let opcode_matches = coddog_db::symbols::query_by_opcode_hash(pg_pool.clone(), &query_sym)
+        .await
+        .map_err(|e| {
+            eprintln!("Error getting opcode matches: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+    let opcode_matches: Vec<SymbolMetadata> = opcode_matches
+        .iter()
+        .map(SymbolMetadata::from_db_symbol)
+        .collect();
+
+    Ok((
+        StatusCode::OK,
+        json!({"exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
+            .to_string(),
+    ))
 }

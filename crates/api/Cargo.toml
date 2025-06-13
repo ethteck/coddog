@@ -13,8 +13,8 @@ An api for finding matching sequences of code among binaries
 [dependencies]
 axum = "0.8.4"
 tokio = { version = "1.45.1", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dotenvy = "0.15.7"
 sqlx = { version = "0.8", features = ["macros", "migrate", "runtime-tokio", "postgres"] }
+tower-http = { version = "0.6.6", features = ["cors"] }
 coddog-db = { path = "../db" }

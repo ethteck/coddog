@@ -48,6 +48,29 @@ impl Display for DBSymbol {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct SymbolMetadata {
+    pub id: i64,
+    pub name: String,
+    pub source_id: i64,
+    pub source_name: String,
+    pub project_id: i64,
+    pub project_name: String,
+}
+
+impl SymbolMetadata {
+    pub fn from_db_symbol(symbol: &DBSymbol) -> Self {
+        Self {
+            id: symbol.id,
+            name: symbol.name.clone(),
+            source_id: symbol.source_id,
+            source_name: symbol.source_name.clone(),
+            project_id: symbol.project_id,
+            project_name: symbol.project_name.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DBWindow {
     pub query_start: i32,
