@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use mapfile_parser::MapFile;
 use object::{
-    elf, Endian, File, Object, ObjectSection, ObjectSymbol, Relocation,
-    RelocationFlags, RelocationTarget,
+    Endian, File, Object, ObjectSection, ObjectSymbol, Relocation, RelocationFlags,
+    RelocationTarget, elf,
 };
 
 use crate::ingest::CoddogRel::SymbolTarget;

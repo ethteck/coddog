@@ -1,10 +1,10 @@
-use crate::ingest::CoddogRel;
 use crate::Platform;
+use crate::ingest::CoddogRel;
 use object::Endian;
-use rabbitizer::operands::ValuedOperand;
 use rabbitizer::IsaExtension::{R3000GTE, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
 use rabbitizer::Vram;
+use rabbitizer::operands::ValuedOperand;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
