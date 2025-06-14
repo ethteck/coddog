@@ -8,76 +8,32 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-// Import Routes
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as MatchIndexRouteImport } from './routes/match/index'
+import { Route as MatchSymbolIdRouteImport } from './routes/match/$symbolId'
 
-import { Route as rootRoute } from './routes/__root'
-import { Route as AdminImport } from './routes/admin'
-import { Route as IndexImport } from './routes/index'
-import { Route as MatchIndexImport } from './routes/match/index'
-import { Route as MatchSymbolIdImport } from './routes/match/$symbolId'
-
-// Create/Update Routes
-
-const AdminRoute = AdminImport.update({
+const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-
-const IndexRoute = IndexImport.update({
+const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-
-const MatchIndexRoute = MatchIndexImport.update({
+const MatchIndexRoute = MatchIndexRouteImport.update({
   id: '/match/',
   path: '/match/',
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-
-const MatchSymbolIdRoute = MatchSymbolIdImport.update({
+const MatchSymbolIdRoute = MatchSymbolIdRouteImport.update({
   id: '/match/$symbolId',
   path: '/match/$symbolId',
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => rootRouteImport,
 } as any)
-
-// Populate the FileRoutesByPath interface
-
-declare module '@tanstack/react-router' {
-  interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexImport
-      parentRoute: typeof rootRoute
-    }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminImport
-      parentRoute: typeof rootRoute
-    }
-    '/match/$symbolId': {
-      id: '/match/$symbolId'
-      path: '/match/$symbolId'
-      fullPath: '/match/$symbolId'
-      preLoaderRoute: typeof MatchSymbolIdImport
-      parentRoute: typeof rootRoute
-    }
-    '/match/': {
-      id: '/match/'
-      path: '/match'
-      fullPath: '/match'
-      preLoaderRoute: typeof MatchIndexImport
-      parentRoute: typeof rootRoute
-    }
-  }
-}
-
-// Create and export the route tree
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -85,22 +41,19 @@ export interface FileRoutesByFullPath {
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match': typeof MatchIndexRoute
 }
-
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match': typeof MatchIndexRoute
 }
-
 export interface FileRoutesById {
-  __root__: typeof rootRoute
+  __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match/': typeof MatchIndexRoute
 }
-
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths: '/' | '/admin' | '/match/$symbolId' | '/match'
@@ -109,12 +62,44 @@ export interface FileRouteTypes {
   id: '__root__' | '/' | '/admin' | '/match/$symbolId' | '/match/'
   fileRoutesById: FileRoutesById
 }
-
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
   MatchSymbolIdRoute: typeof MatchSymbolIdRoute
   MatchIndexRoute: typeof MatchIndexRoute
+}
+
+declare module '@tanstack/react-router' {
+  interface FileRoutesByPath {
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/match/': {
+      id: '/match/'
+      path: '/match'
+      fullPath: '/match'
+      preLoaderRoute: typeof MatchIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/match/$symbolId': {
+      id: '/match/$symbolId'
+      path: '/match/$symbolId'
+      fullPath: '/match/$symbolId'
+      preLoaderRoute: typeof MatchSymbolIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+  }
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -123,35 +108,6 @@ const rootRouteChildren: RootRouteChildren = {
   MatchSymbolIdRoute: MatchSymbolIdRoute,
   MatchIndexRoute: MatchIndexRoute,
 }
-
-export const routeTree = rootRoute
+export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-/* ROUTE_MANIFEST_START
-{
-  "routes": {
-    "__root__": {
-      "filePath": "__root.tsx",
-      "children": [
-        "/",
-        "/admin",
-        "/match/$symbolId",
-        "/match/"
-      ]
-    },
-    "/": {
-      "filePath": "index.tsx"
-    },
-    "/admin": {
-      "filePath": "admin.tsx"
-    },
-    "/match/$symbolId": {
-      "filePath": "match/$symbolId.tsx"
-    },
-    "/match/": {
-      "filePath": "match/index.tsx"
-    }
-  }
-}
-ROUTE_MANIFEST_END */
