@@ -1,4 +1,4 @@
-use crate::{DBSymbol, CHUNK_SIZE};
+use crate::{CHUNK_SIZE, DBSymbol};
 use coddog_core::Symbol;
 use serde::Deserialize;
 use sqlx::{Pool, Postgres, Transaction};
