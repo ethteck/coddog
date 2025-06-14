@@ -2,11 +2,11 @@ use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use coddog_db::SymbolMetadata;
 use coddog_db::projects::CreateProjectRequest;
+use coddog_db::SymbolMetadata;
 use serde_json::json;
-use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -218,9 +218,11 @@ async fn get_symbol(
         .map(SymbolMetadata::from_db_symbol)
         .collect();
 
+    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
+
     Ok((
         StatusCode::OK,
-        json!({"exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
+        json!({"query": query_sym, "exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
             .to_string(),
     ))
 }
