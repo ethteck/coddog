@@ -3,7 +3,7 @@ pub mod symbols;
 
 use anyhow::Result;
 use serde::Serialize;
-use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
+use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::{fs, fs::File, io::Read};
@@ -33,8 +33,8 @@ pub struct DBSymbol {
     pub opcode_hash: i64,
     pub equiv_hash: i64,
     pub exact_hash: i64,
-    pub source_id: i64,
-    pub source_name: String,
+    pub object_id: i64,
+    pub object_name: String,
     pub project_id: i64,
     pub project_name: String,
 }
@@ -43,7 +43,7 @@ impl Display for DBSymbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{} version {} (offset {:X})",
-            self.project_name, self.source_name, self.pos,
+            self.project_name, self.object_name, self.pos,
         ))
     }
 }
@@ -52,8 +52,8 @@ impl Display for DBSymbol {
 pub struct SymbolMetadata {
     pub id: i64,
     pub name: String,
-    pub source_id: i64,
-    pub source_name: String,
+    pub object_id: i64,
+    pub object_name: String,
     pub project_id: i64,
     pub project_name: String,
 }
@@ -63,23 +63,25 @@ impl SymbolMetadata {
         Self {
             id: symbol.id,
             name: symbol.name.clone(),
-            source_id: symbol.source_id,
-            source_name: symbol.source_name.clone(),
+            object_id: symbol.object_id,
+            object_name: symbol.object_name.clone(),
             project_id: symbol.project_id,
             project_name: symbol.project_name.clone(),
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DBWindow {
     pub query_start: i32,
     pub match_start: i32,
     pub length: i64,
     pub symbol_id: i64,
     pub symbol_name: String,
-    pub source_id: i64,
-    pub source_name: String,
+    // pub version_id: Option<i64>,
+    // pub version_name: Option<String>,
+    pub object_id: i64,
+    pub object_name: String,
     pub project_id: i64,
     pub project_name: String,
 }
@@ -107,7 +109,7 @@ pub async fn init() -> Result<PgPool> {
     }
 }
 
-pub async fn create_source(
+pub async fn create_object(
     tx: &mut Transaction<'_, Postgres>,
     project_id: i64,
     name: &str,
@@ -123,7 +125,7 @@ pub async fn create_source(
     let target_path = target_path.join(format!("{}/{}.bin", project_id, hash));
 
     match sqlx::query!(
-        "INSERT INTO sources (project_id, hash, name, filepath) VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO objects (project_id, hash, name, local_path) VALUES ($1, $2, $3, $4) RETURNING id",
         project_id,
         &hash.to_hex().to_string(),
         name,
@@ -212,14 +214,14 @@ final_sequences AS (
     FROM sequence_groups
     GROUP BY symbol_id, pos_diff, sequence_id
 )
-SELECT project_id, projects.name AS project_name, source_id, sources.name AS source_name, symbol_id,
+SELECT project_id, projects.name AS project_name, object_id, objects.name AS object_name, symbol_id,
        symbols.name as symbol_name, start_query_pos, start_match_pos, length
 FROM final_sequences
 JOIN symbols ON symbol_id = symbols.id
-JOIN sources ON symbols.source_id = sources.id
-JOIN projects ON sources.project_id = projects.id
+JOIN objects ON symbols.object_id = objects.id
+JOIN projects ON objects.project_id = projects.id
 WHERE length >= $2
-ORDER BY project_id, source_id, symbol_id, start_query_pos, start_match_pos
+ORDER BY project_id, object_id, symbol_id, start_query_pos, start_match_pos
 ",symbol_id, min_seq_len
     )
     .fetch_all(&conn)
@@ -233,8 +235,8 @@ ORDER BY project_id, source_id, symbol_id, start_query_pos, start_match_pos
             length: row.length.unwrap(),
             symbol_id: row.symbol_id,
             symbol_name: row.symbol_name.clone(),
-            source_id: row.source_id,
-            source_name: row.source_name.clone(),
+            object_id: row.object_id,
+            object_name: row.object_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })

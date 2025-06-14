@@ -1,9 +1,9 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, Binary, Platform, Symbol, get_submatches,
-    ingest::{read_elf, read_map},
+    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
+    Symbol,
 };
 use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsRequest;
@@ -130,7 +130,7 @@ enum DbCommands {
         /// Path to the project's repo
         repo: PathBuf,
     },
-    /// Delete a project from the database, removing its sources, symbols, and hashes
+    /// Delete a project from the database, removing its objects, symbols, and hashes
     DeleteProject {
         /// Name of the project to delete
         name: String,
@@ -641,13 +641,13 @@ async fn main() -> Result<()> {
                 let target_path =
                     get_full_path(yaml.parent().unwrap(), Some(version.paths.target.clone()))
                         .unwrap();
-                let source_id =
-                    coddog_db::create_source(&mut tx, project_id, &version.fullname, &target_path)
+                let object_id =
+                    coddog_db::create_object(&mut tx, project_id, &version.fullname, &target_path)
                         .await?;
 
                 let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
 
-                let symbol_ids = coddog_db::symbols::create(&mut tx, source_id, &symbols).await;
+                let symbol_ids = coddog_db::symbols::create(&mut tx, object_id, &symbols).await;
 
                 let mut pb = ProgressBar::new(symbols.len() as u64);
 
@@ -700,7 +700,7 @@ async fn main() -> Result<()> {
                 println!("No matches found");
             } else {
                 for sym in matches {
-                    println!("{} - {} {}", sym.name, sym.project_name, sym.source_name);
+                    println!("{} - {} {}", sym.name, sym.project_name, sym.object_name);
                 }
             }
         }
@@ -740,19 +740,19 @@ async fn main() -> Result<()> {
             }
 
             let mut project_map: HashMap<i64, String> = HashMap::new();
-            let mut source_map: HashMap<i64, String> = HashMap::new();
+            let mut object_map: HashMap<i64, String> = HashMap::new();
             let mut symbol_map: HashMap<i64, String> = HashMap::new();
 
             let results = SubmatchResults::from_db_hashes(
                 &matching_hashes,
                 &mut project_map,
-                &mut source_map,
+                &mut object_map,
                 &mut symbol_map,
             );
 
             println!(
                 "{}",
-                results.to_string(*window_size, &project_map, &source_map, &symbol_map)
+                results.to_string(*window_size, &project_map, &object_map, &symbol_map)
             );
         }
     }
@@ -768,7 +768,7 @@ impl SubmatchResults {
     fn from_db_hashes(
         hashes: &[DBWindow],
         project_map: &mut HashMap<i64, String>,
-        source_map: &mut HashMap<i64, String>,
+        object_map: &mut HashMap<i64, String>,
         symbol_map: &mut HashMap<i64, String>,
     ) -> Self {
         let mut results = SubmatchResults { projects: vec![] };
@@ -780,20 +780,20 @@ impl SubmatchResults {
 
             let mut project_results = SubmatchProjectResults {
                 id: project_id,
-                sources: vec![],
+                objects: vec![],
             };
 
-            for (source_id, source_rows) in &project_rows.iter().chunk_by(|h| h.source_id) {
-                let source_rows = source_rows.collect_vec();
-                let source_name = &source_rows.first().unwrap().source_name;
-                source_map.insert(source_id, source_name.to_string());
+            for (object_id, object_rows) in &project_rows.iter().chunk_by(|h| h.object_id) {
+                let object_rows = object_rows.collect_vec();
+                let object_name = &object_rows.first().unwrap().object_name;
+                object_map.insert(object_id, object_name.to_string());
 
-                let mut source_results = SubmatchSourceResults {
-                    id: source_id,
+                let mut object_results = SubmatchobjectResults {
+                    id: object_id,
                     symbols: vec![],
                 };
 
-                for (symbol_id, symbol_rows) in &source_rows.into_iter().chunk_by(|h| h.symbol_id) {
+                for (symbol_id, symbol_rows) in &object_rows.into_iter().chunk_by(|h| h.symbol_id) {
                     let symbol_rows = symbol_rows.collect_vec();
                     let sym_name = &symbol_rows.first().unwrap().symbol_name;
                     symbol_map.insert(symbol_id, sym_name.clone());
@@ -809,9 +809,9 @@ impl SubmatchResults {
                             })
                             .collect(),
                     };
-                    source_results.symbols.push(sym_results);
+                    object_results.symbols.push(sym_results);
                 }
-                project_results.sources.push(source_results);
+                project_results.objects.push(object_results);
             }
             results.projects.push(project_results);
         }
@@ -823,18 +823,18 @@ impl SubmatchResults {
         &self,
         window_size: usize,
         project_map: &HashMap<i64, String>,
-        source_map: &HashMap<i64, String>,
+        object_map: &HashMap<i64, String>,
         symbol_map: &HashMap<i64, String>,
     ) -> String {
         let mut result = String::new();
         for project in &self.projects {
             result.push_str(&format!("{}:\n", project_map.get(&project.id).unwrap()));
-            for source in &project.sources {
+            for object in &project.objects {
                 result.push_str(&format!(
                     "\tVersion {}:\n",
-                    source_map.get(&source.id).unwrap()
+                    object_map.get(&object.id).unwrap()
                 ));
-                for symbol in &source.symbols {
+                for symbol in &object.symbols {
                     result.push_str(&format!("\t\t{}:\n", symbol_map.get(&symbol.id).unwrap()));
                     for slice in &symbol.slices {
                         result.push_str(&format!(
@@ -853,10 +853,10 @@ impl SubmatchResults {
 
 struct SubmatchProjectResults {
     id: i64,
-    sources: Vec<SubmatchSourceResults>,
+    objects: Vec<SubmatchobjectResults>,
 }
 
-struct SubmatchSourceResults {
+struct SubmatchobjectResults {
     id: i64,
     symbols: Vec<SubmatchSymbolResults>,
 }

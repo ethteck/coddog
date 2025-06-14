@@ -8,8 +8,8 @@ type SymbolSearch = {
     name: string;
 };
 
-export const Route = createFileRoute('/match/')({
-    component: Match,
+export const Route = createFileRoute('/submatch/')({
+    component: Submatch,
     validateSearch: (search: Record<string, unknown>): SymbolSearch => {
         return {
             name: (search?.name as string) || '',
@@ -17,7 +17,7 @@ export const Route = createFileRoute('/match/')({
     },
 });
 
-function Match() {
+function Submatch() {
     const {name} = Route.useSearch();
     const navigate = Route.useNavigate();
     const [query, setQuery] = useState(name);
@@ -32,7 +32,7 @@ function Match() {
         isError,
         error,
     } = useQuery({
-        queryKey: ['symbol_matches', debouncedQuery],
+        queryKey: ['symbol_submatches', debouncedQuery],
         queryFn: () => fetchSymbolsByName(debouncedQuery),
         enabled: debouncedQuery.trim().length > 0,
         staleTime: 0,
@@ -52,8 +52,8 @@ function Match() {
     return (
         <>
             <div className="content">
-                <h2>Symbol Match</h2>
-                <p>Find symbols that match one with the given name</p>
+                <h2>Symbol Submatch</h2>
+                <p>Find symbols that contain subsequences of code in common with the symbol with the given name</p>
                 <form onSubmit={(e) => e.preventDefault()}>
                     <input
                         id="symbolNameInput"
@@ -71,7 +71,7 @@ function Match() {
                     {symbols?.map((sym) => (
                         <li key={sym.id}>
                             <b>
-                                <Link to="/match/$symbolId" params={{symbolId: sym.id,}}>
+                                <Link to="/submatch/$symbolId" params={{symbolId: sym.id,}}>
                                     {sym.name}
                                 </Link>
                             </b>{' '}

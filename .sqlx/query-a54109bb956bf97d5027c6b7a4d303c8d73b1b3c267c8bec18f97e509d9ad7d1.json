@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
+  "query": "\n    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.object_id,\n           objects.name AS object_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN objects ON objects.id = symbols.object_id\n    INNER JOIN projects on objects.project_id = projects.id\n    WHERE symbols.id = $1",
   "describe": {
     "columns": [
       {
@@ -40,12 +40,12 @@
       },
       {
         "ordinal": 7,
-        "name": "source_id",
+        "name": "object_id",
         "type_info": "Int8"
       },
       {
         "ordinal": 8,
-        "name": "source_name",
+        "name": "object_name",
         "type_info": "Text"
       },
       {
@@ -61,7 +61,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
@@ -78,5 +78,5 @@
       false
     ]
   },
-  "hash": "e3fa8da86a6eb882a4d8db3666a1ded79cb33d8e764e630be467a6df00c7a2b8"
+  "hash": "a54109bb956bf97d5027c6b7a4d303c8d73b1b3c267c8bec18f97e509d9ad7d1"
 }

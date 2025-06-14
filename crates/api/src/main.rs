@@ -45,7 +45,8 @@ async fn main() {
                 .delete(delete_project),
         )
         .route("/symbols", post(query_symbols_by_name))
-        .route("/symbols/{id}", get(get_symbol))
+        .route("/symbols/{id}/match", get(get_symbol_matches))
+        .route("/symbols/{id}/submatch", post(get_symbol_submatches))
         .with_state(db_pool)
         .layer(cors_layer);
 
@@ -156,7 +157,7 @@ async fn query_symbols_by_name(
     Ok((StatusCode::OK, json!(matches).to_string()))
 }
 
-async fn get_symbol(
+async fn get_symbol_matches(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
@@ -224,5 +225,57 @@ async fn get_symbol(
         StatusCode::OK,
         json!({"query": query_sym, "exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
             .to_string(),
+    ))
+}
+
+async fn get_symbol_submatches(
+    State(pg_pool): State<PgPool>,
+    Json(req): Json<coddog_db::symbols::QueryWindowsRequest>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let db_window_size = std::env::var("DB_WINDOW_SIZE")
+        .expect("DB_WINDOW_SIZE must be set")
+        .parse::<i64>()
+        .unwrap();
+
+    if req.min_length < db_window_size {
+        let msg = format!("min_length must be {} or greater", db_window_size);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"success": false, "message": msg}).to_string(),
+        ));
+    }
+
+    let query_sym = coddog_db::symbols::query_by_id(pg_pool.clone(), req.id)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching symbol by ID: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"success": false, "message": "Symbol not found"}).to_string(),
+            )
+        })?;
+
+    let min_length = req.min_length - db_window_size;
+    let windows = coddog_db::query_windows_by_symbol_id(pg_pool.clone(), query_sym.id, min_length)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching symbol by ID: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+
+    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
+
+    Ok((
+        StatusCode::OK,
+        json!({"query": query_sym, "submatches": windows}).to_string(),
     ))
 }
