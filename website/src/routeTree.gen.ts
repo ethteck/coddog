@@ -11,16 +11,16 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
-import { Route as ProjectsImport } from './routes/projects'
+import { Route as AdminImport } from './routes/admin'
 import { Route as IndexImport } from './routes/index'
 import { Route as MatchIndexImport } from './routes/match/index'
 import { Route as MatchSymbolIdImport } from './routes/match/$symbolId'
 
 // Create/Update Routes
 
-const ProjectsRoute = ProjectsImport.update({
-  id: '/projects',
-  path: '/projects',
+const AdminRoute = AdminImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -53,11 +53,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexImport
       parentRoute: typeof rootRoute
     }
-    '/projects': {
-      id: '/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsImport
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminImport
       parentRoute: typeof rootRoute
     }
     '/match/$symbolId': {
@@ -81,14 +81,14 @@ declare module '@tanstack/react-router' {
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
+  '/admin': typeof AdminRoute
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match': typeof MatchIndexRoute
 }
 
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
+  '/admin': typeof AdminRoute
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match': typeof MatchIndexRoute
 }
@@ -96,30 +96,30 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexRoute
-  '/projects': typeof ProjectsRoute
+  '/admin': typeof AdminRoute
   '/match/$symbolId': typeof MatchSymbolIdRoute
   '/match/': typeof MatchIndexRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/projects' | '/match/$symbolId' | '/match'
+  fullPaths: '/' | '/admin' | '/match/$symbolId' | '/match'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects' | '/match/$symbolId' | '/match'
-  id: '__root__' | '/' | '/projects' | '/match/$symbolId' | '/match/'
+  to: '/' | '/admin' | '/match/$symbolId' | '/match'
+  id: '__root__' | '/' | '/admin' | '/match/$symbolId' | '/match/'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ProjectsRoute: typeof ProjectsRoute
+  AdminRoute: typeof AdminRoute
   MatchSymbolIdRoute: typeof MatchSymbolIdRoute
   MatchIndexRoute: typeof MatchIndexRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ProjectsRoute: ProjectsRoute,
+  AdminRoute: AdminRoute,
   MatchSymbolIdRoute: MatchSymbolIdRoute,
   MatchIndexRoute: MatchIndexRoute,
 }
@@ -135,7 +135,7 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/",
-        "/projects",
+        "/admin",
         "/match/$symbolId",
         "/match/"
       ]
@@ -143,8 +143,8 @@ export const routeTree = rootRoute
     "/": {
       "filePath": "index.tsx"
     },
-    "/projects": {
-      "filePath": "projects.tsx"
+    "/admin": {
+      "filePath": "admin.tsx"
     },
     "/match/$symbolId": {
       "filePath": "match/$symbolId.tsx"

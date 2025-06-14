@@ -1,76 +1,53 @@
-import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { fetchSymbolMatches } from '../../api/symbols.tsx';
+import {useQuery} from '@tanstack/react-query';
+import {createFileRoute} from '@tanstack/react-router';
+import {fetchSymbolMatches, SymbolMetadata} from '../../api/symbols.tsx';
 
 export const Route = createFileRoute('/match/$symbolId')({
-  component: SymbolMatches,
+    component: SymbolMatches,
 });
 
 function SymbolMatches() {
-  const { symbolId } = Route.useParams();
+    const {symbolId} = Route.useParams();
 
-  const {
-    data: matchResults,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
-    queryKey: ['match', symbolId],
-    queryFn: () => fetchSymbolMatches(symbolId),
-  });
-  return (
-    <>
-      <div className="content">
-        <h2>Match results</h2>
+    const {
+        data: matchResults,
+        isLoading,
+        isError,
+        error,
+    } = useQuery({
+        queryKey: ['match', symbolId],
+        queryFn: () => fetchSymbolMatches(symbolId),
+    });
 
-        {isLoading && <div>Loading...</div>}
-        {isError && (
-          <div style={{ color: 'red' }}>{(error as Error).message}</div>
-        )}
+    if (isLoading) return <div>Loading...</div>;
+    if (isError) return <div style={{color: 'red'}}>{(error as Error).message}</div>;
+    if (!matchResults) return <div style={{color: 'red'}}>Match results could not be loaded</div>;
 
-        {matchResults?.exact.length > 0 && (
-          <>
-            <h3>Exact matches</h3>
-            <ul>
-              {matchResults.exact.map((match) => (
-                <li key={match.id}>
-                  <b>{match.name}</b> - {match.project_name} (
-                  {match.source_name})
-                </li>
-              ))}
-            </ul>
-            <br />
-          </>
-        )}
+    const renderMatches = (title: string, matches: SymbolMetadata[]) => (
+        <>
+            <h3>{title} ({matches.length})</h3>
+            {matches.length > 0 && (
+                <>
+                    <ul>
+                        {matches.map((match) => (
+                            <li key={match.id}>
+                                <b>{match.name}</b> - {match.project_name} ({match.source_name})
+                            </li>
+                        ))}
+                    </ul>
+                    <br/>
+                </>
+            )}
+        </>
+    );
 
-        {matchResults?.equivalent.length > 0 && (
-          <>
-            <h3>Equivalent matches</h3>
-            <ul>
-              {matchResults.equivalent.map((match) => (
-                <li key={match.id}>
-                  <b>{match.name}</b> - {match.project_name} (
-                  {match.source_name})
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-
-        {matchResults?.opcode.length > 0 && (
-          <>
-            <h3>Opcode matches</h3>
-            <ul>
-              {matchResults.opcode.map((match) => (
-                <li key={match.id}>
-                  <b>{match.name}</b> - {match.project_name} (
-                  {match.source_name})
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
-    </>
-  );
+    return (
+        <div className="content">
+            <h2>Match results</h2>
+            <p><b>Query: </b>some_func134 - Some Game (Platform)</p>
+            {renderMatches('Exact matches', matchResults.exact)}
+            {renderMatches('Equivalent matches', matchResults.equivalent)}
+            {renderMatches('Opcode matches', matchResults.opcode)}
+        </div>
+    );
 }
