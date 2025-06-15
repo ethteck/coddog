@@ -8,8 +8,8 @@ type SymbolSearch = {
   name: string;
 };
 
-export const Route = createFileRoute('/match/')({
-  component: Match,
+export const Route = createFileRoute('/symbol/')({
+  component: Symbol,
   validateSearch: (search: Record<string, unknown>): SymbolSearch => {
     return {
       name: (search?.name as string) || '',
@@ -17,7 +17,7 @@ export const Route = createFileRoute('/match/')({
   },
 });
 
-function Match() {
+function Symbol() {
   const { name } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [query, setQuery] = useState(name);
@@ -52,8 +52,8 @@ function Match() {
   return (
     <>
       <div className="content">
-        <h2>Symbol Match</h2>
-        <p>Find symbols that match one with the given name</p>
+        <h2>Symbol lookup</h2>
+        <p>Find matches and submatches for the symbol with the given name</p>
         <form onSubmit={(e) => e.preventDefault()}>
           <input
             id="symbolNameInput"
@@ -69,13 +69,16 @@ function Match() {
         )}
         <ul>
           {symbols?.map((sym) => (
-            <li key={sym.id}>
+            <li key={sym.slug}>
               <b>
-                <Link to="/match/$symbolId" params={{ symbolId: sym.id }}>
+                <Link
+                  to="/symbol/$symbolSlug"
+                  params={{ symbolSlug: sym.slug }}
+                >
                   {sym.name}
                 </Link>
               </b>{' '}
-              - {sym.project_name} ({sym.object_name})
+              - {sym.project_name} ({sym.source_name})
             </li>
           ))}
         </ul>

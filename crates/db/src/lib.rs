@@ -27,14 +27,17 @@ impl Display for Project {
 #[derive(Clone, Debug)]
 pub struct DBSymbol {
     pub id: i64,
+    pub slug: String,
     pub pos: i64,
     pub len: i32,
     pub name: String,
     pub opcode_hash: i64,
     pub equiv_hash: i64,
     pub exact_hash: i64,
-    pub object_id: i64,
-    pub object_name: String,
+    pub source_id: i64,
+    pub source_name: String,
+    pub version_id: Option<i64>,
+    pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
 }
@@ -43,17 +46,19 @@ impl Display for DBSymbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "{} version {} (offset {:X})",
-            self.project_name, self.object_name, self.pos,
+            self.project_name, self.source_name, self.pos,
         ))
     }
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SymbolMetadata {
-    pub id: i64,
+    pub slug: String,
     pub name: String,
-    pub object_id: i64,
-    pub object_name: String,
+    pub source_id: i64,
+    pub source_name: String,
+    pub version_id: Option<i64>,
+    pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
 }
@@ -61,10 +66,12 @@ pub struct SymbolMetadata {
 impl SymbolMetadata {
     pub fn from_db_symbol(symbol: &DBSymbol) -> Self {
         Self {
-            id: symbol.id,
+            slug: symbol.slug.clone(),
             name: symbol.name.clone(),
-            object_id: symbol.object_id,
-            object_name: symbol.object_name.clone(),
+            source_id: symbol.source_id,
+            source_name: symbol.source_name.clone(),
+            version_id: symbol.version_id,
+            version_name: symbol.version_name.clone(),
             project_id: symbol.project_id,
             project_name: symbol.project_name.clone(),
         }
@@ -77,13 +84,42 @@ pub struct DBWindow {
     pub match_start: i32,
     pub length: i64,
     pub symbol_id: i64,
+    pub symbol_slug: String,
     pub symbol_name: String,
-    // pub version_id: Option<i64>,
-    // pub version_name: Option<String>,
-    pub object_id: i64,
-    pub object_name: String,
+    pub version_id: Option<i64>,
+    pub version_name: Option<String>,
+    pub source_id: i64,
+    pub source_name: String,
     pub project_id: i64,
     pub project_name: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SubmatchResult {
+    pub symbol: SymbolMetadata,
+    pub query_start: i64,
+    pub match_start: i64,
+    pub length: i64,
+}
+
+impl SubmatchResult {
+    pub fn from_db_window(window: &DBWindow) -> Self {
+        Self {
+            symbol: SymbolMetadata {
+                slug: window.symbol_slug.clone(),
+                name: window.symbol_name.clone(),
+                source_id: window.source_id,
+                source_name: window.source_name.clone(),
+                version_id: window.version_id,
+                version_name: window.version_name.clone(),
+                project_id: window.project_id,
+                project_name: window.project_name.clone(),
+            },
+            query_start: window.query_start as i64,
+            match_start: window.match_start as i64,
+            length: window.length,
+        }
+    }
 }
 
 pub async fn init() -> Result<PgPool> {
@@ -109,12 +145,26 @@ pub async fn init() -> Result<PgPool> {
     }
 }
 
-pub async fn create_object(
+pub async fn create_version(
     tx: &mut Transaction<'_, Postgres>,
-    project_id: i64,
     name: &str,
-    filepath: &PathBuf,
+    project_id: i64,
 ) -> Result<i64> {
+    match sqlx::query!(
+        "INSERT INTO versions (name, project_id) VALUES ($1, $2) RETURNING id",
+        name,
+        project_id
+    )
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(anyhow::Error::from)
+    {
+        Ok(r) => Ok(r.id),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn create_object(tx: &mut Transaction<'_, Postgres>, filepath: &PathBuf) -> Result<i64> {
     let mut file = File::open(filepath)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
@@ -122,25 +172,68 @@ pub async fn create_object(
 
     let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
     let target_path = Path::new(&bin_path);
-    let target_path = target_path.join(format!("{}/{}.bin", project_id, hash));
+    let target_path = target_path.join(format!("{}.bin", hash));
+
+    let hash_str = hash.to_hex().to_string();
 
     match sqlx::query!(
-        "INSERT INTO objects (project_id, hash, name, local_path) VALUES ($1, $2, $3, $4) RETURNING id",
-        project_id,
-        &hash.to_hex().to_string(),
-        name,
+        "INSERT INTO objects (hash, local_path) VALUES ($1, $2) ON CONFLICT (hash) DO NOTHING",
+        &hash_str,
         target_path.to_str().unwrap(),
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(anyhow::Error::from)
+    {
+        Ok(_) => {}
+        Err(e) => return Err(e),
+    };
+
+    match sqlx::query!("SELECT id FROM objects WHERE hash = $1", &hash_str,)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(anyhow::Error::from)
+    {
+        Ok(r) => match r {
+            Some(r) => {
+                if !target_path.exists() {
+                    fs::create_dir_all(target_path.parent().unwrap())?;
+                    match fs::copy(filepath, target_path.clone()) {
+                        Ok(_) => Ok(r.id),
+                        Err(e) => Err(anyhow::anyhow!("Error copying file: {}", e)),
+                    }
+                } else {
+                    Ok(r.id)
+                }
+            }
+            None => Err(anyhow::anyhow!("Object not found after insert.")),
+        },
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn create_source(
+    tx: &mut Transaction<'_, Postgres>,
+    name: &str,
+    source_link: &Option<String>,
+    object_id: i64,
+    version_id: Option<i64>,
+    project_id: i64,
+) -> Result<i64> {
+    match sqlx::query!(
+        "INSERT INTO sources (name, source_link, object_id, version_id, project_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        name,
+        *source_link,
+        object_id,
+        version_id,
+        project_id
     )
         .fetch_one(&mut **tx)
         .await
         .map_err(anyhow::Error::from)
     {
         Ok(r) => {
-            fs::create_dir_all(target_path.parent().unwrap())?; // Ensure the target directory exists
-            match fs::copy(filepath, target_path.clone()) {
-                Ok(_) => Ok(r.id),
-                Err(e) => Err(anyhow::anyhow!("Error copying file: {}", e)),
-            }
+            Ok(r.id)
         }
         Err(e) => Err(e),
     }
@@ -179,8 +272,13 @@ pub async fn create_symbol_window_hashes(
 pub async fn query_windows_by_symbol_id(
     conn: Pool<Postgres>,
     symbol_id: i64,
-    min_seq_len: i64,
+    window_size: i64,
+    db_window_size: i64,
+    limit: i64,
+    page: i64,
 ) -> Result<Vec<DBWindow>> {
+    let min_seq_len = window_size - db_window_size;
+
     let rows = sqlx::query!(
         "
 WITH
@@ -214,15 +312,19 @@ final_sequences AS (
     FROM sequence_groups
     GROUP BY symbol_id, pos_diff, sequence_id
 )
-SELECT project_id, projects.name AS project_name, object_id, objects.name AS object_name, symbol_id,
-       symbols.name as symbol_name, start_query_pos, start_match_pos, length
+SELECT sources.project_id, projects.name AS project_name, source_id, sources.name AS source_name, 
+       symbol_id, symbols.name as symbol_name, symbols.slug AS symbol_slug,
+        versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+       start_query_pos, start_match_pos, length
 FROM final_sequences
 JOIN symbols ON symbol_id = symbols.id
-JOIN objects ON symbols.object_id = objects.id
-JOIN projects ON objects.project_id = projects.id
+JOIN sources ON symbols.source_id = sources.id
+JOIN versions ON sources.version_id = versions.id
+JOIN projects ON sources.project_id = projects.id
 WHERE length >= $2
-ORDER BY project_id, object_id, symbol_id, start_query_pos, start_match_pos
-",symbol_id, min_seq_len
+ORDER BY length DESC, project_id, source_id, symbol_id, start_query_pos, start_match_pos
+LIMIT $3 OFFSET $4
+",symbol_id, min_seq_len, limit, page * limit
     )
     .fetch_all(&conn)
     .await?;
@@ -232,11 +334,14 @@ ORDER BY project_id, object_id, symbol_id, start_query_pos, start_match_pos
         .map(|row| DBWindow {
             query_start: row.start_query_pos.unwrap(),
             match_start: row.start_match_pos.unwrap(),
-            length: row.length.unwrap(),
+            length: row.length.unwrap() + db_window_size - 1,
             symbol_id: row.symbol_id,
+            symbol_slug: row.symbol_slug.clone(),
             symbol_name: row.symbol_name.clone(),
-            object_id: row.object_id,
-            object_name: row.object_name.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            version_id: row.version_id,
+            version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })

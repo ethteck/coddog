@@ -13,25 +13,27 @@ type BulkSymbolData = (
 );
 
 #[derive(Deserialize)]
-pub struct QuerySymbolsRequest {
+pub struct QuerySymbolsByNameRequest {
     pub name: String,
 }
 
 #[derive(Deserialize)]
 pub struct QueryWindowsRequest {
-    pub id: i64,
+    pub slug: String,
     pub min_length: i64,
+    pub page: i64,
+    pub size: i64,
 }
 
 pub async fn create(
     tx: &mut Transaction<'_, Postgres>,
-    object_id: i64,
+    source_id: i64,
     symbols: &[Symbol],
 ) -> Vec<i64> {
     let mut ret = vec![];
 
     for chunk in symbols.chunks(CHUNK_SIZE) {
-        let object_ids = vec![object_id; chunk.len()];
+        let source_ids = vec![source_id; chunk.len()];
         let (offsets, lens, names, opcode_hashes, equiv_hashes, exact_hashes): BulkSymbolData =
             chunk
                 .iter()
@@ -49,17 +51,17 @@ pub async fn create(
 
         let rows = sqlx::query!(
             "
-                INSERT INTO symbols (object_id, pos, len, name, opcode_hash, equiv_hash, exact_hash)
-                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::bigint[], $4::text[], $5::bigint[], $6::bigint[], $7::bigint[])
+                INSERT INTO symbols (pos, len, name, opcode_hash, equiv_hash, exact_hash, source_id)
+                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bigint[])
                 RETURNING id
         ",
-            &object_ids as &[i64],
             &offsets as &[i64],
             &lens as &[i64],
             &names,
             &opcode_hashes,
             &equiv_hashes,
             &exact_hashes,
+            &source_ids as &[i64],
         )
             .fetch_all(&mut **tx)
             .await
@@ -73,18 +75,97 @@ pub async fn create(
     ret
 }
 
+pub async fn query_by_id(conn: Pool<Postgres>, query: i64) -> anyhow::Result<Option<DBSymbol>> {
+    let row = sqlx::query!(
+        "
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+           sources.name AS source_name, 
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+           projects.name AS project_name, projects.id as project_id
+    FROM symbols
+    INNER JOIN sources ON sources.id = symbols.source_id
+    LEFT JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
+    WHERE symbols.id = $1",
+        query
+    )
+    .fetch_optional(&conn)
+    .await?;
+
+    let res = row.map(|row| DBSymbol {
+        id: row.id,
+        slug: row.slug.clone(),
+        pos: row.pos,
+        len: row.len,
+        name: row.name.to_string(),
+        opcode_hash: row.opcode_hash,
+        equiv_hash: row.equiv_hash,
+        exact_hash: row.exact_hash,
+        source_id: row.source_id,
+        source_name: row.source_name.clone(),
+        version_id: row.version_id,
+        version_name: row.version_name.clone(),
+        project_id: row.project_id,
+        project_name: row.project_name.clone(),
+    });
+
+    Ok(res)
+}
+
+pub async fn query_by_slug(conn: Pool<Postgres>, query: &str) -> anyhow::Result<Option<DBSymbol>> {
+    let row = sqlx::query!(
+        "
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+           sources.name AS source_name, 
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+           projects.name AS project_name, projects.id as project_id
+    FROM symbols
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
+    WHERE symbols.slug = $1",
+        query
+    )
+    .fetch_optional(&conn)
+    .await?;
+
+    let res = row.map(|row| DBSymbol {
+        id: row.id,
+        slug: row.slug.clone(),
+        pos: row.pos,
+        len: row.len,
+        name: row.name.to_string(),
+        opcode_hash: row.opcode_hash,
+        equiv_hash: row.equiv_hash,
+        exact_hash: row.exact_hash,
+        source_id: row.source_id,
+        source_name: row.source_name.clone(),
+        version_id: row.version_id,
+        version_name: row.version_name.clone(),
+        project_id: row.project_id,
+        project_name: row.project_name.clone(),
+    });
+
+    Ok(res)
+}
+
 pub async fn query_by_name(
     conn: Pool<Postgres>,
-    query: &QuerySymbolsRequest,
+    query: &QuerySymbolsByNameRequest,
 ) -> anyhow::Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.object_id,
-           objects.name AS object_name, projects.name AS project_name, projects.id as project_id
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+           sources.name AS source_name, 
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+           projects.name AS project_name, projects.id as project_id
     FROM symbols
-    INNER JOIN objects ON objects.id = symbols.object_id
-    INNER JOIN projects on objects.project_id = projects.id
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.name ILIKE $1",
         query.name
     )
@@ -95,50 +176,21 @@ pub async fn query_by_name(
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
+            slug: row.slug.clone(),
             pos: row.pos,
             len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
             exact_hash: row.exact_hash,
-            object_id: row.object_id,
-            object_name: row.object_name.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            version_id: row.version_id,
+            version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })
         .collect();
-
-    Ok(res)
-}
-
-pub async fn query_by_id(conn: Pool<Postgres>, query: i64) -> anyhow::Result<Option<DBSymbol>> {
-    let row = sqlx::query!(
-        "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.object_id,
-           objects.name AS object_name, projects.name AS project_name, projects.id as project_id
-    FROM symbols
-    INNER JOIN objects ON objects.id = symbols.object_id
-    INNER JOIN projects on objects.project_id = projects.id
-    WHERE symbols.id = $1",
-        query
-    )
-    .fetch_optional(&conn)
-    .await?;
-
-    let res = row.map(|row| DBSymbol {
-        id: row.id,
-        pos: row.pos,
-        len: row.len,
-        name: row.name.to_string(),
-        opcode_hash: row.opcode_hash,
-        equiv_hash: row.equiv_hash,
-        exact_hash: row.exact_hash,
-        object_id: row.object_id,
-        object_name: row.object_name.clone(),
-        project_id: row.project_id,
-        project_name: row.project_name.clone(),
-    });
 
     Ok(res)
 }
@@ -149,13 +201,16 @@ pub async fn query_by_opcode_hash(
 ) -> anyhow::Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
-           symbols.object_id,
-            objects.name AS object_name, projects.name AS project_name, projects.id as project_id
+           symbols.source_id,
+            sources.name AS source_name, 
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+            projects.name AS project_name, projects.id as project_id
         FROM symbols
-    INNER JOIN objects ON objects.id = symbols.object_id
-    INNER JOIN projects on objects.project_id = projects.id
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.opcode_hash = $1 AND NOT symbols.id = $2",
         symbol.opcode_hash as i64,
         symbol.id as i64
@@ -167,14 +222,17 @@ pub async fn query_by_opcode_hash(
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
+            slug: row.slug.clone(),
             pos: row.pos,
             len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
             exact_hash: row.exact_hash,
-            object_id: row.object_id,
-            object_name: row.object_name.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            version_id: row.version_id,
+            version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })
@@ -189,13 +247,16 @@ pub async fn query_by_equiv_hash(
 ) -> anyhow::Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
-           symbols.object_id,
-            objects.name AS object_name, projects.name AS project_name, projects.id as project_id
+           symbols.source_id,
+            sources.name AS source_name, 
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+            projects.name AS project_name, projects.id as project_id
         FROM symbols
-    INNER JOIN objects ON objects.id = symbols.object_id
-    INNER JOIN projects on objects.project_id = projects.id
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.equiv_hash = $1 AND NOT symbols.id = $2",
         symbol.equiv_hash as i64,
         symbol.id as i64
@@ -207,14 +268,17 @@ pub async fn query_by_equiv_hash(
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
+            slug: row.slug.clone(),
             pos: row.pos,
             len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
             exact_hash: row.exact_hash,
-            object_id: row.object_id,
-            object_name: row.object_name.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            version_id: row.version_id,
+            version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })
@@ -229,12 +293,15 @@ pub async fn query_by_exact_hash(
 ) -> anyhow::Result<Vec<DBSymbol>> {
     let rows = sqlx::query!(
         "
-    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,
-           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.object_id,
-            objects.name AS object_name, projects.name AS project_name, projects.id as project_id
+    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+            sources.name AS source_name,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+            projects.name AS project_name, projects.id as project_id
         FROM symbols
-    INNER JOIN objects ON objects.id = symbols.object_id
-    INNER JOIN projects on objects.project_id = projects.id
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",
         symbol.exact_hash as i64,
         symbol.id as i64
@@ -246,14 +313,17 @@ pub async fn query_by_exact_hash(
         .iter()
         .map(|row| DBSymbol {
             id: row.id,
+            slug: row.slug.clone(),
             pos: row.pos,
             len: row.len,
             name: row.name.to_string(),
             opcode_hash: row.opcode_hash,
             equiv_hash: row.equiv_hash,
             exact_hash: row.exact_hash,
-            object_id: row.object_id,
-            object_name: row.object_name.clone(),
+            source_id: row.source_id,
+            source_name: row.source_name.clone(),
+            version_id: row.version_id,
+            version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
         })

@@ -1,15 +1,11 @@
-export function SymbolLabel({
-  name,
-  project_name,
-  object_name,
-}: {
-  name: string;
-  project_name: string;
-  object_name: string;
-}) {
+import { Link } from '@tanstack/react-router';
+import { SymbolMetadata } from '../api/symbols.tsx';
+
+export function SymbolLabel({ symbol }: { symbol: SymbolMetadata }) {
   return (
-    <>
-      <b>{name}</b> - {project_name} ({object_name})
-    </>
+    <Link to="/symbol/$symbolSlug" params={{ symbolSlug: symbol.slug }}>
+      <b>{symbol.name}</b> - {symbol.project_name}{' '}
+      {symbol.version_name ? symbol.version_name : ''}
+    </Link>
   );
 }

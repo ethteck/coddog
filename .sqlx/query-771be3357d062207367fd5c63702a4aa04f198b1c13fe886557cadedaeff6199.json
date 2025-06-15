@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,\n           symbols.object_id,\n            objects.name AS object_name, projects.name AS project_name, projects.id as project_id\n        FROM symbols\n    INNER JOIN objects ON objects.id = symbols.object_id\n    INNER JOIN projects on objects.project_id = projects.id\n    WHERE symbols.equiv_hash = $1 AND NOT symbols.id = $2",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.id = $1",
   "describe": {
     "columns": [
       {
@@ -10,58 +10,62 @@
       },
       {
         "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
         "name": "pos",
         "type_info": "Int8"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "len",
         "type_info": "Int4"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "name",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "exact_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 7,
-        "name": "object_id",
+        "ordinal": 8,
+        "name": "source_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 8,
-        "name": "object_name",
-        "type_info": "Text"
-      },
-      {
         "ordinal": 9,
-        "name": "project_name",
+        "name": "source_name",
         "type_info": "Text"
       },
       {
         "ordinal": 10,
+        "name": "project_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
         "name": "project_id",
         "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8",
         "Int8"
       ]
     },
@@ -76,8 +80,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "ca35665db86b95e92dd9a836c69ad2ac1a72720c8ca45a81fc95785f868a3a50"
+  "hash": "771be3357d062207367fd5c63702a4aa04f198b1c13fe886557cadedaeff6199"
 }

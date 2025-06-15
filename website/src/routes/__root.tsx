@@ -16,18 +16,11 @@ export const Route = createRootRoute({
           Home
         </Link>{' '}
         <Link
-          to="/match"
+          to="/symbol"
           search={{ name: '' }}
           className="[&.active]:font-bold"
         >
-          Match
-        </Link>{' '}
-        <Link
-          to="/submatch"
-          search={{ name: '' }}
-          className="[&.active]:font-bold"
-        >
-          Submatch
+          Symbol
         </Link>{' '}
         <Link to="/admin" className="[&.active]:font-bold">
           Admin

@@ -1,22 +1,19 @@
 export type SymbolMetadata = {
-  id: string;
+  slug: string;
   name: string;
-  object_id: number;
-  object_name: string;
+  source_id: number;
+  source_name: string;
+  version_id?: number;
+  version_name?: string;
   project_id: number;
   project_name: string;
 };
 
 export type SymbolSubmatch = {
+  symbol: SymbolMetadata;
   query_start: number;
   match_start: number;
   length: number;
-  symbol_id: number;
-  symbol_name: string;
-  object_id: number;
-  object_name: string;
-  project_id: number;
-  project_name: string;
 };
 
 export type SymbolMatchResult = {
@@ -44,23 +41,30 @@ export const fetchSymbolsByName = async (
 };
 
 export const fetchSymbolMatches = async (
-  symbol_id: string,
+  symbol_slug: string,
 ): Promise<SymbolMatchResult> => {
-  const res = await fetch(`http://localhost:3000/symbols/${symbol_id}/match`);
+  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}/match`);
   if (!res.ok) throw new Error('Network response was not ok');
   return res.json();
 };
 
 export const fetchSymbolSubmatches = async (
-  symbol_id: string,
+  symbol_slug: string,
   min_length: number = 8,
+  page: number,
+  size: number,
 ): Promise<SymbolSubmatchResult> => {
   const res = await fetch(
-    `http://localhost:3000/symbols/${symbol_id}/submatch`,
+    `http://localhost:3000/symbols/${symbol_slug}/submatch`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: parseInt(symbol_id), min_length: min_length }),
+      body: JSON.stringify({
+        slug: symbol_slug,
+        min_length: min_length,
+        page: page,
+        size: size,
+      }),
     },
   );
   if (!res.ok) throw new Error('Network response was not ok');

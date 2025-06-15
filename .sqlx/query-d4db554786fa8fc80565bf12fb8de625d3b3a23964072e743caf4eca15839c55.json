@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.object_id,\n           objects.name AS object_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN objects ON objects.id = symbols.object_id\n    INNER JOIN projects on objects.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
   "describe": {
     "columns": [
       {
@@ -10,51 +10,56 @@
       },
       {
         "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
         "name": "pos",
         "type_info": "Int8"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "len",
         "type_info": "Int4"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "name",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "exact_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 7,
-        "name": "object_id",
+        "ordinal": 8,
+        "name": "source_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 8,
-        "name": "object_name",
-        "type_info": "Text"
-      },
-      {
         "ordinal": 9,
-        "name": "project_name",
+        "name": "source_name",
         "type_info": "Text"
       },
       {
         "ordinal": 10,
+        "name": "project_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
         "name": "project_id",
         "type_info": "Int8"
       }
@@ -75,8 +80,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "05f6997c3379222bf3c77d1ac9977782272d627a6883a438093b4b87fbdf5328"
+  "hash": "d4db554786fa8fc80565bf12fb8de625d3b3a23964072e743caf4eca15839c55"
 }

@@ -1,6 +1,6 @@
 name: Rust
 
-on: [push]
+on: [ push ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,21 +14,17 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Run cargo clippy
         run: cargo clippy --all -- -D warnings
-  macos-check:
-    runs-on: macos-latest
+  test:
+    name: Test
+    strategy:
+      matrix:
+        platform: [ ubuntu-latest, windows-latest, macos-latest ]
+      fail-fast: false
+    runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Test
-        run: cargo test --all-features
-  ubuntu-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test
-        run: cargo test --all-features
-  windows-check:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Test
-        run: cargo test --all-features
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo test
+        run: cargo test --release --all-features

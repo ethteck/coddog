@@ -26,3 +26,4 @@ jobs:
           ARCHIVE_TYPES: ${{ matrix.archive }}
           TOOLCHAIN_VERSION: stable
           SRC_DIR: crates/cli
+          EXTRA_COMMAND_FLAGS: --no-default-features

@@ -1,23 +1,25 @@
-import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { fetchSymbolSubmatches } from '../../api/symbols.tsx';
-import { SymbolLabel } from '../../components/SymbolLabel.tsx';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { fetchSymbolSubmatches } from '../api/symbols.tsx';
+import { SymbolLabel } from './SymbolLabel.tsx';
+import React from 'react';
 
-export const Route = createFileRoute('/submatch/$symbolId')({
-  component: SymbolSubmatches,
-});
+export function SymbolSubmatches({ slug }: { slug: string }) {
+  const [page, setPage] = React.useState(0);
 
-function SymbolSubmatches() {
-  const { symbolId } = Route.useParams();
+  var pageSize = 10;
+  var minLength = 10;
 
   const {
     data: submatchResults,
     isLoading,
     isError,
     error,
+    isFetching,
+    isPlaceholderData,
   } = useQuery({
-    queryKey: ['match', symbolId],
-    queryFn: () => fetchSymbolSubmatches(symbolId, 10),
+    queryKey: ['match', slug, page, pageSize],
+    queryFn: () => fetchSymbolSubmatches(slug, minLength, page, pageSize),
+    placeholderData: keepPreviousData,
   });
 
   if (isLoading) return <div>Loading...</div>;
@@ -29,33 +31,47 @@ function SymbolSubmatches() {
     );
 
   // Sort submatches by length in descending order
-  const sortedSubmatches = [...submatchResults.submatches]
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 10);
+  const sortedSubmatches = [...submatchResults.submatches].sort(
+    (a, b) => b.length - a.length,
+  );
 
   return (
     <div className="content">
-      <h2>Match results</h2>
-      <p>
-        <b>Query: </b>{' '}
-        <SymbolLabel
-          name={submatchResults.query.name}
-          project_name={submatchResults.query.project_name}
-          object_name={submatchResults.query.object_name}
-        />
-      </p>
-
       <h3>
-        Submatches ({Math.min(submatchResults.submatches.length, 10)} of{' '}
-        {submatchResults.submatches.length})
+        Submatches
+        <span> (page {page + 1}/???) </span>
       </h3>
+
+      <button
+        onClick={() => setPage((old) => Math.max(old - 1, 0))}
+        disabled={page === 0}
+      >
+        Previous Page
+      </button>
+
+      <button
+        onClick={() => {
+          // if (!isPlaceholderData && submatchResults.hasMore) {
+          if (!isPlaceholderData) {
+            setPage((old) => old + 1);
+          }
+        }}
+        // Disable the Next Page button until we know a next page is available
+        //disabled={isPlaceholderData || !submatchResults?.hasMore}
+        disabled={isPlaceholderData}
+      >
+        Next Page
+      </button>
+
+      {isFetching ? <span> Loading...</span> : null}
+
       {sortedSubmatches.length === 0 ? (
         <p>No submatches found.</p>
       ) : (
         <div className="submatch-list">
           {sortedSubmatches.map((submatch) => (
             <div
-              key={submatch.symbol_id}
+              key={`${submatch.symbol.slug}_${submatch.query_start}_${submatch.match_start}_${submatch.length}`}
               className="submatch-card"
               style={{
                 background: '#2c2f33',
@@ -74,11 +90,7 @@ function SymbolSubmatches() {
                   marginBottom: '4px',
                 }}
               >
-                <SymbolLabel
-                  name={submatch.symbol_name}
-                  project_name={submatch.project_name}
-                  object_name={submatch.object_name}
-                />
+                <SymbolLabel symbol={submatch.symbol} />
               </div>
               <div
                 style={{

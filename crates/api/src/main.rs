@@ -2,8 +2,8 @@ use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use coddog_db::SymbolMetadata;
 use coddog_db::projects::CreateProjectRequest;
+use coddog_db::{SubmatchResult, SymbolMetadata};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -45,8 +45,8 @@ async fn main() {
                 .delete(delete_project),
         )
         .route("/symbols", post(query_symbols_by_name))
-        .route("/symbols/{id}/match", get(get_symbol_matches))
-        .route("/symbols/{id}/submatch", post(get_symbol_submatches))
+        .route("/symbols/{slug}/match", get(get_symbol_matches))
+        .route("/symbols/{slug}/submatch", post(get_symbol_submatches))
         .with_state(db_pool)
         .layer(cors_layer);
 
@@ -140,7 +140,7 @@ async fn delete_project(
 
 async fn query_symbols_by_name(
     State(pg_pool): State<PgPool>,
-    Json(req): Json<coddog_db::symbols::QuerySymbolsRequest>,
+    Json(req): Json<coddog_db::symbols::QuerySymbolsByNameRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
     let matches = coddog_db::symbols::query_by_name(pg_pool, &req)
         .await
@@ -159,12 +159,12 @@ async fn query_symbols_by_name(
 
 async fn get_symbol_matches(
     State(pg_pool): State<PgPool>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let query_sym = coddog_db::symbols::query_by_id(pg_pool.clone(), id)
+    let query_sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &slug)
         .await
         .map_err(|e| {
-            eprintln!("Error fetching symbol by ID: {}", e);
+            eprintln!("Error fetching symbol by slug: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -237,6 +237,27 @@ async fn get_symbol_submatches(
         .parse::<i64>()
         .unwrap();
 
+    if req.size <= 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"success": false, "message": "size must be greater than 0"}).to_string(),
+        ));
+    }
+
+    if req.page < 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"success": false, "message": "page must be at least 0"}).to_string(),
+        ));
+    }
+
+    if req.size > 100 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            json!({"success": false, "message": "size must be 100 or less"}).to_string(),
+        ));
+    }
+
     if req.min_length < db_window_size {
         let msg = format!("min_length must be {} or greater", db_window_size);
         return Err((
@@ -245,10 +266,10 @@ async fn get_symbol_submatches(
         ));
     }
 
-    let query_sym = coddog_db::symbols::query_by_id(pg_pool.clone(), req.id)
+    let query_sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &req.slug)
         .await
         .map_err(|e| {
-            eprintln!("Error fetching symbol by ID: {}", e);
+            eprintln!("Error fetching symbol by slug: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -261,17 +282,27 @@ async fn get_symbol_submatches(
             )
         })?;
 
-    let min_length = req.min_length - db_window_size;
-    let windows = coddog_db::query_windows_by_symbol_id(pg_pool.clone(), query_sym.id, min_length)
-        .await
-        .map_err(|e| {
-            eprintln!("Error fetching symbol by ID: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
+    let windows = coddog_db::query_windows_by_symbol_id(
+        pg_pool.clone(),
+        query_sym.id,
+        req.min_length,
+        db_window_size,
+        req.size,
+        req.page,
+    )
+    .await
+    .map_err(|e| {
+        eprintln!("Error fetching symbol by ID: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
 
+    let windows: Vec<SubmatchResult> = windows
+        .into_iter()
+        .map(|w| SubmatchResult::from_db_window(&w))
+        .collect();
     let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
 
     Ok((

@@ -1,23 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { fetchSymbolMatches, SymbolMetadata } from '../../api/symbols.tsx';
-import { SymbolLabel } from '../../components/SymbolLabel.tsx';
+import { fetchSymbolMatches, SymbolMetadata } from '../api/symbols.tsx';
+import { SymbolLabel } from './SymbolLabel.tsx';
 
-export const Route = createFileRoute('/match/$symbolId')({
-  component: SymbolMatches,
-});
-
-function SymbolMatches() {
-  const { symbolId } = Route.useParams();
-
+export function SymbolMatches({ slug }: { slug: string }) {
   const {
     data: matchResults,
     isLoading,
     isError,
     error,
   } = useQuery({
-    queryKey: ['match', symbolId],
-    queryFn: () => fetchSymbolMatches(symbolId),
+    queryKey: ['match', slug],
+    queryFn: () => fetchSymbolMatches(slug),
   });
 
   if (isLoading) return <div>Loading...</div>;
@@ -37,8 +30,8 @@ function SymbolMatches() {
         <>
           <ul>
             {matches.map((match) => (
-              <li key={match.id}>
-                <b>{match.name}</b> - {match.project_name} ({match.object_name})
+              <li key={match.slug}>
+                <SymbolLabel symbol={match} />
               </li>
             ))}
           </ul>
@@ -50,15 +43,6 @@ function SymbolMatches() {
 
   return (
     <div className="content">
-      <h2>Match results</h2>
-      <p>
-        <b>Query: </b>{' '}
-        <SymbolLabel
-          name={matchResults.query.name}
-          project_name={matchResults.query.project_name}
-          object_name={matchResults.query.object_name}
-        />
-      </p>
       {renderMatches('Exact matches', matchResults.exact)}
       {renderMatches('Equivalent matches', matchResults.equivalent)}
       {renderMatches('Opcode matches', matchResults.opcode)}
