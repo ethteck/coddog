@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, \n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
   "describe": {
     "columns": [
       {
@@ -55,11 +55,21 @@
       },
       {
         "ordinal": 10,
+        "name": "version_id?",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "version_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "project_id",
         "type_info": "Int8"
       }
@@ -81,8 +91,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "d4db554786fa8fc80565bf12fb8de625d3b3a23964072e743caf4eca15839c55"
+  "hash": "9c10abc375ba3b741354cbaf0912816c335b6e3b866884e1d7230b594c431d66"
 }

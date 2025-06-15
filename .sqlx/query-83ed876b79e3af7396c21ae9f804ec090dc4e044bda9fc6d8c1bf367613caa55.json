@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,\n           symbols.source_id,\n            sources.name AS source_name, projects.name AS project_name, projects.id as project_id\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.opcode_hash = $1 AND NOT symbols.id = $2",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name, \n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id as project_id\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.slug = $1",
   "describe": {
     "columns": [
       {
@@ -55,19 +55,28 @@
       },
       {
         "ordinal": 10,
+        "name": "version_id?",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "version_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "project_id",
         "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -82,8 +91,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "38253c6308a30b70c5646cc82b7ac24d3c6bb8fb79d3efa3b5adeab8abe7fd31"
+  "hash": "83ed876b79e3af7396c21ae9f804ec090dc4e044bda9fc6d8c1bf367613caa55"
 }
