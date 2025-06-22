@@ -3,10 +3,12 @@ use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use coddog_db::projects::CreateProjectRequest;
+use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{SubmatchResult, SymbolMetadata};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use std::collections::{HashMap, HashSet};
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -45,6 +47,7 @@ async fn main() {
                 .delete(delete_project),
         )
         .route("/symbols", post(query_symbols_by_name))
+        .route("/symbols/{slug}", get(query_symbols_by_slug))
         .route("/symbols/{slug}/match", get(get_symbol_matches))
         .route("/symbols/{slug}/submatch", post(get_symbol_submatches))
         .with_state(db_pool)
@@ -140,7 +143,7 @@ async fn delete_project(
 
 async fn query_symbols_by_name(
     State(pg_pool): State<PgPool>,
-    Json(req): Json<coddog_db::symbols::QuerySymbolsByNameRequest>,
+    Json(req): Json<QuerySymbolsByNameRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
     let matches = coddog_db::symbols::query_by_name(pg_pool, &req)
         .await
@@ -155,6 +158,32 @@ async fn query_symbols_by_name(
     let matches: Vec<SymbolMetadata> = matches.iter().map(SymbolMetadata::from_db_symbol).collect();
 
     Ok((StatusCode::OK, json!(matches).to_string()))
+}
+
+async fn query_symbols_by_slug(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &slug)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching symbol by slug: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"success": false, "message": "Symbol not found"}).to_string(),
+            )
+        })?;
+
+    Ok((
+        StatusCode::OK,
+        json!(SymbolMetadata::from_db_symbol(&sym)).to_string(),
+    ))
 }
 
 async fn get_symbol_matches(
@@ -177,6 +206,8 @@ async fn get_symbol_matches(
             )
         })?;
 
+    let mut found_stuff = HashSet::new();
+
     let exact_matches = coddog_db::symbols::query_by_exact_hash(pg_pool.clone(), &query_sym)
         .await
         .map_err(|e| {
@@ -186,26 +217,22 @@ async fn get_symbol_matches(
                 json!({"success": false, "message": e.to_string()}).to_string(),
             )
         })?;
-    let exact_matches: Vec<SymbolMetadata> = exact_matches
-        .iter()
-        .map(SymbolMetadata::from_db_symbol)
-        .collect();
+    found_stuff.extend(exact_matches.iter().map(|m| m.id));
 
-    let equivalent_matches = coddog_db::symbols::query_by_equiv_hash(pg_pool.clone(), &query_sym)
-        .await
-        .map_err(|e| {
-            eprintln!("Error getting equivalent matches: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
-    let equivalent_matches: Vec<SymbolMetadata> = equivalent_matches
-        .iter()
-        .map(SymbolMetadata::from_db_symbol)
-        .collect();
+    let mut equivalent_matches =
+        coddog_db::symbols::query_by_equiv_hash(pg_pool.clone(), &query_sym)
+            .await
+            .map_err(|e| {
+                eprintln!("Error getting equivalent matches: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"success": false, "message": e.to_string()}).to_string(),
+                )
+            })?;
+    equivalent_matches.retain(|m| !found_stuff.contains(&m.id));
+    found_stuff.extend(equivalent_matches.iter().map(|m| m.id));
 
-    let opcode_matches = coddog_db::symbols::query_by_opcode_hash(pg_pool.clone(), &query_sym)
+    let mut opcode_matches = coddog_db::symbols::query_by_opcode_hash(pg_pool.clone(), &query_sym)
         .await
         .map_err(|e| {
             eprintln!("Error getting opcode matches: {}", e);
@@ -214,12 +241,21 @@ async fn get_symbol_matches(
                 json!({"success": false, "message": e.to_string()}).to_string(),
             )
         })?;
+    opcode_matches.retain(|m| !found_stuff.contains(&m.id));
+
+    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
+    let exact_matches: Vec<SymbolMetadata> = exact_matches
+        .iter()
+        .map(SymbolMetadata::from_db_symbol)
+        .collect();
+    let equivalent_matches: Vec<SymbolMetadata> = equivalent_matches
+        .iter()
+        .map(SymbolMetadata::from_db_symbol)
+        .collect();
     let opcode_matches: Vec<SymbolMetadata> = opcode_matches
         .iter()
         .map(SymbolMetadata::from_db_symbol)
         .collect();
-
-    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
 
     Ok((
         StatusCode::OK,
@@ -299,6 +335,22 @@ async fn get_symbol_submatches(
         )
     })?;
 
+    let mut symbol_asm: HashMap<String, Vec<String>> = HashMap::new();
+    for window in &windows {
+        if !symbol_asm.contains_key(&window.symbol_slug) {
+            let asm_text =
+                coddog_core::get_asm_for_symbol(&window.object_path, window.object_symbol_idx)
+                    .map_err(|e| {
+                        eprintln!("Error getting ASM from bytes: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            json!({"success": false, "message": e.to_string()}).to_string(),
+                        )
+                    })?;
+            symbol_asm.insert(window.symbol_slug.clone(), asm_text);
+        }
+    }
+
     let windows: Vec<SubmatchResult> = windows
         .into_iter()
         .map(|w| SubmatchResult::from_db_window(&w))
@@ -307,6 +359,6 @@ async fn get_symbol_submatches(
 
     Ok((
         StatusCode::OK,
-        json!({"query": query_sym, "submatches": windows}).to_string(),
+        json!({"query": query_sym, "submatches": windows, "asm": symbol_asm}).to_string(),
     ))
 }

@@ -1,8 +1,9 @@
 import { useDebouncedState } from '@tanstack/react-pacer';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import React, { useState } from 'react';
 import { fetchSymbolsByName } from '../../api/symbols.tsx';
+import { SymbolLabel } from '../../components/SymbolLabel.tsx';
 
 type SymbolSearch = {
   name: string;
@@ -70,15 +71,7 @@ function Symbol() {
         <ul>
           {symbols?.map((sym) => (
             <li key={sym.slug}>
-              <b>
-                <Link
-                  to="/symbol/$symbolSlug"
-                  params={{ symbolSlug: sym.slug }}
-                >
-                  {sym.name}
-                </Link>
-              </b>{' '}
-              - {sym.project_name} ({sym.source_name})
+              <SymbolLabel symbol={sym} />
             </li>
           ))}
         </ul>

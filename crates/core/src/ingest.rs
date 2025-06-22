@@ -8,7 +8,7 @@ use object::{
 };
 
 use crate::ingest::CoddogRel::SymbolTarget;
-use crate::{Arch, Platform, Symbol};
+use crate::{Arch, Platform, Symbol, SymbolDef};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum CoddogRel {
@@ -37,23 +37,25 @@ fn get_reloc_target(elf: &File, addr: u64, reloc: &Relocation, addend: i64) -> C
 pub fn read_elf(
     platform: Platform,
     unmatched_funcs: &Option<Vec<String>>,
-    elf_data: Vec<u8>,
+    elf_data: &[u8],
 ) -> Result<Vec<Symbol>> {
-    let file = File::parse(&*elf_data)?;
+    let file = File::parse(elf_data)?;
 
     let relocation_data = get_reloc_data(platform, &file)?;
 
     let ret: Vec<Symbol> = file
         .symbols()
-        .filter(|s| s.kind() == object::SymbolKind::Text)
-        .filter_map(|symbol| {
+        .enumerate()
+        .filter(|elem| elem.1.kind() == object::SymbolKind::Text)
+        .filter_map(|elem| {
+            let symbol = elem.1;
             symbol.section_index().and_then(|i| {
                 file.section_by_index(i)
                     .ok()
-                    .map(|section| (symbol, section, &relocation_data[i.0]))
+                    .map(|section| (symbol, elem.0, section, &relocation_data[i.0]))
             })
         })
-        .filter_map(|(symbol, section, relocation_data)| {
+        .filter_map(|(symbol, symbol_idx, section, relocation_data)| {
             section
                 .data_range(symbol.address(), symbol.size())
                 .ok()
@@ -61,6 +63,7 @@ pub fn read_elf(
                 .map(|data| {
                     (
                         symbol,
+                        symbol_idx,
                         relocation_data,
                         data,
                         section.address(),
@@ -69,20 +72,21 @@ pub fn read_elf(
                 })
         })
         .map(
-            |(symbol, section_relocations, data, section_address, section_offset)| {
+            |(symbol, symbol_idx, section_relocations, data, section_address, section_offset)| {
                 let offset = symbol.address() - section_address + section_offset;
 
-                Symbol::new(
-                    symbol.name().unwrap().to_string(),
-                    data.to_vec(),
-                    symbol.address() as usize,
-                    offset as usize,
-                    unmatched_funcs
+                Symbol::new(SymbolDef {
+                    name: symbol.name().unwrap().to_string(),
+                    bytes: data.to_vec(),
+                    vram: symbol.address() as usize,
+                    offset: offset as usize,
+                    is_decompiled: unmatched_funcs
                         .as_ref()
                         .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
                     platform,
-                    section_relocations,
-                )
+                    relocations: section_relocations.clone(),
+                    symbol_idx,
+                })
             },
         )
         .collect();
@@ -91,13 +95,11 @@ pub fn read_elf(
 
 fn get_reloc_data(platform: Platform, file: &File) -> Result<Vec<BTreeMap<u64, CoddogRel>>> {
     // Copied & modified from objdiff - thx
-    // Parse all relocations to pair R_MIPS_HI16 and R_MIPS_LO16. Since the instructions only
-    // have 16-bit immediate fields, the 32-bit addend is split across the two relocations.
-    // R_MIPS_LO16 relocations without an immediately preceding R_MIPS_HI16 use the last seen
-    // R_MIPS_HI16 addend.
-    // See https://refspecs.linuxfoundation.org/elf/mipsabi.pdf pages 4-17 and 4-18
 
     let mut relocation_data = Vec::with_capacity(file.sections().count() + 1);
+
+    let insn_length = platform.arch().insn_length();
+
     match platform.arch() {
         Arch::Mips => {
             for obj_section in file.sections() {
@@ -114,7 +116,8 @@ fn get_reloc_data(platform: Platform, file: &File) -> Result<Vec<BTreeMap<u64, C
                         RelocationFlags::Elf {
                             r_type: elf::R_MIPS_HI16,
                         } => {
-                            let code = data[addr as usize..addr as usize + 4].try_into()?;
+                            let code =
+                                data[addr as usize..addr as usize + insn_length].try_into()?;
                             let addend = ((platform.endianness().read_u32_bytes(code) & 0x0000FFFF)
                                 << 16) as i32;
                             last_hi = Some(addr);
@@ -123,7 +126,8 @@ fn get_reloc_data(platform: Platform, file: &File) -> Result<Vec<BTreeMap<u64, C
                         RelocationFlags::Elf {
                             r_type: elf::R_MIPS_LO16,
                         } => {
-                            let code = data[addr as usize..addr as usize + 4].try_into()?;
+                            let code =
+                                data[addr as usize..addr as usize + insn_length].try_into()?;
                             let addend = (platform.endianness().read_u32_bytes(code) & 0x0000FFFF)
                                 as i16 as i32;
                             let full_addend = (last_hi_addend + addend) as i64;
@@ -211,17 +215,18 @@ pub fn read_map(
             let end = start + x.size as usize;
             let raw = &rom_bytes[start..end];
 
-            Symbol::new(
-                x.name.clone(),
-                raw.to_vec(),
-                x.vram as usize,
-                start,
-                unmatched_funcs
+            Symbol::new(SymbolDef {
+                name: x.name.clone(),
+                bytes: raw.to_vec(),
+                vram: x.vram as usize,
+                offset: start,
+                is_decompiled: unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&x.name)),
                 platform,
-                &BTreeMap::default(),
-            )
+                relocations: BTreeMap::default(),
+                symbol_idx: 0, // No symbol index in plain binaries
+            })
         })
         .collect();
     Ok(ret)
@@ -234,7 +239,7 @@ mod tests {
     #[test]
     fn test_simple_mips() {
         let elf_data = include_bytes!("../../../test/simple_mips.o").to_vec();
-        let symbols = read_elf(Platform::N64, &None, elf_data).unwrap();
+        let symbols = read_elf(Platform::N64, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -259,7 +264,7 @@ mod tests {
     #[test]
     fn test_simple_mips_linked() {
         let elf_data = include_bytes!("../../../test/simple_mips_linked.o").to_vec();
-        let symbols = read_elf(Platform::N64, &None, elf_data).unwrap();
+        let symbols = read_elf(Platform::N64, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -286,7 +291,7 @@ mod tests {
     fn test_simple_mips_map() {
         let rom_bytes = include_bytes!("../../../test/simple_mips_raw.bin").to_vec();
         let map_str = include_str!("../../../test/simple_mips.map");
-        let symbols = read_map(Platform::N64, None, rom_bytes, &map_str).unwrap();
+        let symbols = read_map(Platform::N64, None, rom_bytes, map_str).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -312,7 +317,7 @@ mod tests {
     #[test]
     fn test_simple_ppc() {
         let elf_data = include_bytes!("../../../test/simple_ppc.o").to_vec();
-        let symbols = read_elf(Platform::Gc, &None, elf_data).unwrap();
+        let symbols = read_elf(Platform::Gc, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -337,7 +342,7 @@ mod tests {
     #[test]
     fn test_simple_ppc_linked() {
         let elf_data = include_bytes!("../../../test/simple_ppc_linked.o").to_vec();
-        let symbols = read_elf(Platform::Gc, &None, elf_data).unwrap();
+        let symbols = read_elf(Platform::Gc, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();

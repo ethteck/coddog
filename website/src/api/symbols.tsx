@@ -1,19 +1,21 @@
 export type SymbolMetadata = {
   slug: string;
   name: string;
+  len: number;
   source_id: number;
   source_name: string;
   version_id?: number;
   version_name?: string;
   project_id: number;
   project_name: string;
+  platform: number;
 };
 
 export type SymbolSubmatch = {
   symbol: SymbolMetadata;
   query_start: number;
   match_start: number;
-  length: number;
+  len: number;
 };
 
 export type SymbolMatchResult = {
@@ -26,6 +28,7 @@ export type SymbolMatchResult = {
 export type SymbolSubmatchResult = {
   query: SymbolMetadata;
   submatches: SymbolSubmatch[];
+  asm: Map<string, string[]>;
 };
 
 export const fetchSymbolsByName = async (
@@ -36,6 +39,14 @@ export const fetchSymbolsByName = async (
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: symbol_name }),
   });
+  if (!res.ok) throw new Error('Network response was not ok');
+  return res.json();
+};
+
+export const fetchSymbolMetadata = async (
+  symbol_slug: string,
+): Promise<SymbolMetadata> => {
+  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}`);
   if (!res.ok) throw new Error('Network response was not ok');
   return res.json();
 };
@@ -68,5 +79,9 @@ export const fetchSymbolSubmatches = async (
     },
   );
   if (!res.ok) throw new Error('Network response was not ok');
-  return res.json();
+  const data = await res.json();
+  return {
+    ...data,
+    asm: new Map(Object.entries(data.asm)),
+  };
 };

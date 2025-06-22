@@ -22,9 +22,11 @@ fn get_rabbitizer_instruction(word: u32, vram: u32, platform: Platform) -> rabbi
 }
 
 pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
+    let insn_length = platform.arch().insn_length();
+
     match platform {
         Platform::N64 | Platform::Psx | Platform::Ps2 => bytes
-            .chunks_exact(4)
+            .chunks_exact(insn_length)
             .map(|chunk| {
                 let code = platform
                     .endianness()
@@ -34,7 +36,7 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
             })
             .collect(),
         Platform::Gc | Platform::Wii => bytes
-            .chunks_exact(4)
+            .chunks_exact(insn_length)
             .map(|c| {
                 ppc750cl::Opcode::_detect(
                     platform.endianness().read_u32_bytes(c.try_into().unwrap()),
@@ -54,15 +56,17 @@ pub(crate) fn get_equivalence_hash(
 
     let mut reloc_ids = HashMap::new();
 
+    let insn_length = platform.arch().insn_length();
+
     match platform {
         Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Wii | Platform::Gc => {
             let mut hashed_reloc;
 
-            for (i, chunk) in bytes.chunks_exact(4).enumerate() {
+            for (i, chunk) in bytes.chunks_exact(insn_length).enumerate() {
                 let code = platform
                     .endianness()
                     .read_u32_bytes(chunk.try_into().unwrap());
-                let cur_vram = vram + i * 4;
+                let cur_vram = vram + i * insn_length;
 
                 // Hash the unique id for the relocation entry rather than the specifics
                 if let Some(reloc) = relocations.get(&(cur_vram as u64)) {

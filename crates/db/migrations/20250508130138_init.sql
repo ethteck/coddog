@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS symbols
     pos         BIGINT NOT NULL,
     len         INT    NOT NULL,
     name        TEXT   NOT NULL,
+    symbol_idx  INT    NOT NULL,
     opcode_hash BIGINT NOT NULL,
     equiv_hash  BIGINT NOT NULL,
     exact_hash  BIGINT NOT NULL,

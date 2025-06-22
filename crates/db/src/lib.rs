@@ -2,6 +2,7 @@ pub mod projects;
 pub mod symbols;
 
 use anyhow::Result;
+use coddog_core::Platform;
 use serde::Serialize;
 use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
 use std::fmt::{Display, Formatter};
@@ -31,6 +32,7 @@ pub struct DBSymbol {
     pub pos: i64,
     pub len: i32,
     pub name: String,
+    pub symbol_idx: i32,
     pub opcode_hash: i64,
     pub equiv_hash: i64,
     pub exact_hash: i64,
@@ -40,6 +42,7 @@ pub struct DBSymbol {
     pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
+    pub platform: i32,
 }
 
 impl Display for DBSymbol {
@@ -55,25 +58,37 @@ impl Display for DBSymbol {
 pub struct SymbolMetadata {
     pub slug: String,
     pub name: String,
+    pub len: i32,
     pub source_id: i64,
     pub source_name: String,
     pub version_id: Option<i64>,
     pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
+    pub platform: i32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SymbolData {
+    pub metadata: SymbolMetadata,
+    pub asm: Vec<String>,
 }
 
 impl SymbolMetadata {
     pub fn from_db_symbol(symbol: &DBSymbol) -> Self {
+        let platform = Platform::from_id(symbol.platform).expect("Unexpected platform ID");
+        let num_insns = symbol.len / platform.arch().insn_length() as i32;
         Self {
             slug: symbol.slug.clone(),
             name: symbol.name.clone(),
+            len: num_insns,
             source_id: symbol.source_id,
             source_name: symbol.source_name.clone(),
             version_id: symbol.version_id,
             version_name: symbol.version_name.clone(),
             project_id: symbol.project_id,
             project_name: symbol.project_name.clone(),
+            platform: symbol.platform,
         }
     }
 }
@@ -82,16 +97,21 @@ impl SymbolMetadata {
 pub struct DBWindow {
     pub query_start: i32,
     pub match_start: i32,
-    pub length: i64,
+    pub len: i64,
     pub symbol_id: i64,
     pub symbol_slug: String,
     pub symbol_name: String,
+    pub symbol_len: i32,
+    pub object_symbol_idx: i32,
     pub version_id: Option<i64>,
     pub version_name: Option<String>,
     pub source_id: i64,
     pub source_name: String,
+    pub object_id: i64,
+    pub object_path: String,
     pub project_id: i64,
     pub project_name: String,
+    pub platform: i32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -99,25 +119,29 @@ pub struct SubmatchResult {
     pub symbol: SymbolMetadata,
     pub query_start: i64,
     pub match_start: i64,
-    pub length: i64,
+    pub len: i64,
 }
 
 impl SubmatchResult {
     pub fn from_db_window(window: &DBWindow) -> Self {
+        let platform = Platform::from_id(window.platform).expect("Unexpected platform ID");
+        let num_insns = window.symbol_len / platform.arch().insn_length() as i32;
         Self {
             symbol: SymbolMetadata {
                 slug: window.symbol_slug.clone(),
                 name: window.symbol_name.clone(),
+                len: num_insns,
                 source_id: window.source_id,
                 source_name: window.source_name.clone(),
                 version_id: window.version_id,
                 version_name: window.version_name.clone(),
                 project_id: window.project_id,
                 project_name: window.project_name.clone(),
+                platform: window.platform,
             },
             query_start: window.query_start as i64,
             match_start: window.match_start as i64,
-            length: window.length,
+            len: window.len,
         }
     }
 }
@@ -312,13 +336,16 @@ final_sequences AS (
     FROM sequence_groups
     GROUP BY symbol_id, pos_diff, sequence_id
 )
-SELECT sources.project_id, projects.name AS project_name, source_id, sources.name AS source_name, 
-       symbol_id, symbols.name as symbol_name, symbols.slug AS symbol_slug,
-        versions.id AS \"version_id?\", versions.name AS \"version_name?\",
+SELECT sources.project_id, projects.name AS project_name, source_id, sources.name AS source_name,
+       symbol_id, symbols.name as symbol_name, symbols.slug AS symbol_slug, symbols.len AS symbol_len,
+       symbols.symbol_idx AS object_symbol_idx,
+        versions.id AS \"version_id?\", versions.name AS \"version_name?\", projects.platform,
+        objects.id AS object_id, objects.local_path AS object_path,
        start_query_pos, start_match_pos, length
 FROM final_sequences
 JOIN symbols ON symbol_id = symbols.id
 JOIN sources ON symbols.source_id = sources.id
+JOIN objects ON sources.object_id = objects.id
 JOIN versions ON sources.version_id = versions.id
 JOIN projects ON sources.project_id = projects.id
 WHERE length >= $2
@@ -334,16 +361,21 @@ LIMIT $3 OFFSET $4
         .map(|row| DBWindow {
             query_start: row.start_query_pos.unwrap(),
             match_start: row.start_match_pos.unwrap(),
-            length: row.length.unwrap() + db_window_size - 1,
+            len: row.length.unwrap() + db_window_size - 1,
             symbol_id: row.symbol_id,
             symbol_slug: row.symbol_slug.clone(),
             symbol_name: row.symbol_name.clone(),
+            symbol_len: row.symbol_len,
+            object_symbol_idx: row.object_symbol_idx,
             source_id: row.source_id,
             source_name: row.source_name.clone(),
+            object_id: row.object_id,
+            object_path: row.object_path.clone(),
             version_id: row.version_id,
             version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
+            platform: row.platform,
         })
         .collect();
 

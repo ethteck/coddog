@@ -292,11 +292,11 @@ fn get_unmatched_funcs(base_dir: &Path, config: &Version) -> Option<Vec<String>>
 fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<Vec<Symbol>> {
     let unmatched_funcs = get_unmatched_funcs(base_dir, config);
     let platform =
-        Platform::of(platform).unwrap_or_else(|| panic!("Invalid platform: {}", platform));
+        Platform::from_name(platform).unwrap_or_else(|| panic!("Invalid platform: {}", platform));
 
     if let Some(elf_path) = get_full_path(base_dir, config.paths.elf.clone()) {
         let elf_data = fs::read(elf_path)?;
-        return read_elf(platform, &unmatched_funcs, elf_data);
+        return read_elf(platform, &unmatched_funcs, &elf_data);
     }
 
     if let (Some(target), Some(map_path)) = (
@@ -535,7 +535,7 @@ async fn main() -> Result<()> {
 
             for yaml in yamls {
                 let config = read_config(yaml.clone())?;
-                let cur_platform = Platform::of(&config.platform).unwrap();
+                let cur_platform = Platform::from_name(&config.platform).unwrap();
 
                 if platform.is_none() {
                     platform = Some(cur_platform);
@@ -569,7 +569,7 @@ async fn main() -> Result<()> {
                     if opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes {
                         println!(
                             "0x{:X} - {} {}: {}",
-                            i * 4,
+                            i * platform.arch().insn_length(),
                             project_name.color(BINARY_COLORS[0]),
                             version_name.color(BINARY_COLORS[0]),
                             cli_fullname(symbol)

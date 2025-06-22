@@ -13,7 +13,7 @@ export function SymbolMatches({ slug }: { slug: string }) {
     queryFn: () => fetchSymbolMatches(slug),
   });
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <div>Loading match results...</div>;
   if (isError)
     return <div style={{ color: 'red' }}>{(error as Error).message}</div>;
   if (!matchResults)

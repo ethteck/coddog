@@ -1,15 +1,18 @@
-use crate::{DbCommands, MatchType, collect_symbols, get_full_path};
+use crate::{DbCommands, MatchType, get_full_path};
 use anyhow::{Result, anyhow};
 use coddog_core::Platform;
+use coddog_core::ingest::read_elf;
 use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, DBWindow};
 use decomp_settings::read_config;
+use glob::glob;
 use inquire::Select;
 use itertools::Itertools;
 use pbr::ProgressBar;
 use sqlx::{Pool, Postgres};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::SystemTime;
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> anyhow::Result<DBSymbol> {
@@ -93,7 +96,7 @@ impl SubmatchResults {
                             .map(|h| SubmatchSliceResults {
                                 query_start: h.query_start,
                                 match_start: h.match_start,
-                                length: h.length,
+                                length: h.len,
                             })
                             .collect(),
                     };
@@ -165,7 +168,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
         DbCommands::AddProject { repo } => {
             let yaml = repo.join("decomp.yaml");
             let config = read_config(yaml.clone())?;
-            let platform = Platform::of(&config.platform).unwrap();
+            let platform = Platform::from_name(&config.platform).unwrap();
             let window_size = std::env::var("DB_WINDOW_SIZE")
                 .expect("DB_WINDOW_SIZE must be set")
                 .parse::<usize>()?;
@@ -188,40 +191,50 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 let version_id =
                     coddog_db::create_version(&mut tx, &version.fullname, project_id).await?;
 
-                let target_path =
-                    get_full_path(yaml.parent().unwrap(), Some(version.paths.target.clone()))
-                        .unwrap();
-                let object_id = coddog_db::create_object(&mut tx, &target_path).await?;
-                let source_id = coddog_db::create_source(
-                    &mut tx,
-                    &version.fullname,
-                    &config.repo,
-                    object_id,
-                    Option::from(version_id),
-                    project_id,
-                )
-                .await?;
+                let obj_files: Vec<PathBuf> = glob(&format!(
+                    "{}/**/*.o",
+                    get_full_path(
+                        yaml.parent().unwrap(),
+                        Some(version.paths.build_dir.clone())
+                    )
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                ))?
+                .filter_map(Result::ok)
+                .collect();
 
-                let symbols = collect_symbols(version, yaml.parent().unwrap(), &config.platform)?;
-
-                let symbol_ids = coddog_db::symbols::create(&mut tx, source_id, &symbols).await;
-
-                let mut pb = ProgressBar::new(symbols.len() as u64);
-
+                let mut pb = ProgressBar::new(obj_files.len() as u64);
                 pb.format("[=>-]");
+                pb.message(format!("Importing objects ({}) ", version.fullname).as_str());
 
-                if config.versions.len() == 1 {
-                    pb.message("Importing hashes ");
-                } else {
-                    pb.message(format!("Importing hashes ({}) ", version.fullname).as_str());
-                }
-
-                for (symbol, id) in symbols.iter().zip(symbol_ids) {
+                for obj_file in obj_files {
                     pb.inc();
+                    let object_id = coddog_db::create_object(&mut tx, &obj_file).await?;
+                    let source_id = coddog_db::create_source(
+                        &mut tx,
+                        obj_file.file_name().unwrap().to_str().unwrap(),
+                        &config.repo,
+                        object_id,
+                        Option::from(version_id),
+                        project_id,
+                    )
+                    .await?;
 
-                    let opcode_hashes = symbol.get_opcode_hashes(window_size);
+                    let obj_bytes = std::fs::read(&obj_file)?;
+                    let symbols = read_elf(platform, &None, &obj_bytes)?;
 
-                    coddog_db::create_symbol_window_hashes(&mut tx, &opcode_hashes, id).await?;
+                    if !symbols.is_empty() {
+                        let symbol_ids =
+                            coddog_db::symbols::create(&mut tx, source_id, &symbols).await;
+
+                        for (symbol, id) in symbols.iter().zip(symbol_ids) {
+                            let opcode_hashes = symbol.get_opcode_hashes(window_size);
+
+                            coddog_db::create_symbol_window_hashes(&mut tx, &opcode_hashes, id)
+                                .await?;
+                        }
+                    }
                 }
                 println!();
             }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,\n           symbols.source_id,\n            sources.name AS source_name, \n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n            projects.name AS project_name, projects.id as project_id\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.equiv_hash = $1 AND NOT symbols.id = $2",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n            projects.name AS project_name, projects.id as project_id, projects.platform\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",
   "describe": {
     "columns": [
       {
@@ -30,48 +30,58 @@
       },
       {
         "ordinal": 5,
+        "name": "symbol_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
         "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "exact_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "source_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "source_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "version_id?",
         "type_info": "Int8"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "version_name?",
         "type_info": "Text"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "project_id",
         "type_info": "Int8"
+      },
+      {
+        "ordinal": 15,
+        "name": "platform",
+        "type_info": "Int4"
       }
     ],
     "parameters": {
@@ -94,8 +104,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "3cba0c2720454ffa8d6f32440a1eb7fec4d91d26b16a908d0f7a1c19c6867b11"
+  "hash": "1d580b3384865ed66805f06d31635dec873fc1c4f35ea159381d58e3d1517896"
 }

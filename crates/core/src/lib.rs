@@ -2,18 +2,29 @@ pub mod arch;
 pub mod cluster;
 pub mod ingest;
 
-use std::collections::BTreeMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
-
 use crate::arch::get_opcodes;
 use crate::ingest::CoddogRel;
+use anyhow::Result;
 use editdistancek::edit_distance_bounded;
+use objdiff_core::diff::DiffObjConfig;
+use objdiff_core::diff::display::DiffText;
 use object::Endianness;
+use std::collections::BTreeMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Arch {
     Mips,
     Ppc,
+}
+
+impl Arch {
+    pub fn insn_length(&self) -> usize {
+        match self {
+            Arch::Mips => 4,
+            Arch::Ppc => 4,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -26,13 +37,24 @@ pub enum Platform {
 }
 
 impl Platform {
-    pub fn of(name: &str) -> Option<Self> {
+    pub fn from_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "n64" => Some(Platform::N64),
             "psx" => Some(Platform::Psx),
             "ps2" => Some(Platform::Ps2),
             "gc" => Some(Platform::Gc),
             "wii" => Some(Platform::Wii),
+            _ => None,
+        }
+    }
+
+    pub fn from_id(id: i32) -> Option<Self> {
+        match id {
+            0 => Some(Platform::N64),
+            1 => Some(Platform::Psx),
+            2 => Some(Platform::Ps2),
+            3 => Some(Platform::Gc),
+            4 => Some(Platform::Wii),
             _ => None,
         }
     }
@@ -70,8 +92,6 @@ pub struct Symbol {
     pub vram: usize,
     /// the file offset of the symbol
     pub offset: usize,
-    /// the length of the symbol in bytes
-    pub length: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
     /// the opcode hash for the symbol
@@ -80,6 +100,8 @@ pub struct Symbol {
     pub equiv_hash: u64,
     /// the exact hash for the symbol
     pub exact_hash: u64,
+    /// the symbol_idx of the symbol in the object
+    pub symbol_idx: usize,
 }
 
 #[derive(Debug)]
@@ -95,50 +117,51 @@ pub struct InsnSeqMatch {
     pub length: usize,
 }
 
-impl Symbol {
-    pub fn new(
-        name: String,
-        bytes: Vec<u8>,
-        vram: usize,
-        offset: usize,
-        is_decompiled: bool,
-        platform: Platform,
-        relocations: &BTreeMap<u64, CoddogRel>,
-    ) -> Symbol {
-        let mut bytes = bytes;
-        match platform.arch() {
-            Arch::Mips | Arch::Ppc => {
-                while bytes.len() >= 4 && bytes[bytes.len() - 4..] == [0, 0, 0, 0] {
-                    bytes.truncate(bytes.len() - 4);
-                }
-            }
-        }
+pub struct SymbolDef {
+    name: String,
+    bytes: Vec<u8>,
+    vram: usize,
+    offset: usize,
+    is_decompiled: bool,
+    platform: Platform,
+    relocations: BTreeMap<u64, CoddogRel>,
+    symbol_idx: usize,
+}
 
-        // TODO maybe remove field
-        let length = bytes.len();
+impl Symbol {
+    pub fn new(def: SymbolDef) -> Symbol {
+        let mut bytes = def.bytes;
+
+        let insn_length = def.platform.arch().insn_length();
+        while bytes.len() >= insn_length
+            && bytes[bytes.len() - insn_length..] == vec![0; insn_length]
+        {
+            bytes.truncate(bytes.len() - insn_length);
+        }
 
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);
         let exact_hash = hasher.finish();
 
-        let equiv_hash = arch::get_equivalence_hash(&bytes, vram, platform, relocations);
+        let equiv_hash =
+            arch::get_equivalence_hash(&bytes, def.vram, def.platform, &def.relocations);
 
-        let opcodes = get_opcodes(&bytes, platform);
+        let opcodes = get_opcodes(&bytes, def.platform);
         let mut hasher = DefaultHasher::new();
         opcodes.hash(&mut hasher);
         let opcode_hash = hasher.finish();
 
         Symbol {
-            name,
+            name: def.name,
             bytes,
-            length,
             opcodes,
-            vram,
-            offset,
-            is_decompiled,
+            vram: def.vram,
+            offset: def.offset,
+            is_decompiled: def.is_decompiled,
             exact_hash,
             equiv_hash,
             opcode_hash,
+            symbol_idx: def.symbol_idx,
         }
     }
 
@@ -233,3 +256,67 @@ pub fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
         0.0
     }
 }
+
+pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<String>> {
+    let object_bytes = std::fs::read(object_path).expect("Failed to read object file");
+
+    let diff_config = DiffObjConfig {
+        analyze_data_flow: false,
+        ppc_calculate_pool_relocations: false,
+        ..Default::default()
+    };
+    let object = objdiff_core::obj::read::parse(&object_bytes, &diff_config)?;
+
+    let diff = objdiff_core::diff::code::no_diff_code(&object, symbol_idx as usize, &diff_config)?;
+
+    let mut ret = Vec::new();
+
+    for row in &diff.instruction_rows {
+        let mut line = String::new();
+
+        objdiff_core::diff::display::display_row(
+            &object,
+            symbol_idx as usize,
+            row,
+            &diff_config,
+            |segment| {
+                match segment.text {
+                    DiffText::Eol => {
+                        ret.push(line.clone());
+                        line = String::new();
+                        return Ok(());
+                    }
+                    DiffText::Basic(s) => line.push_str(s),
+                    DiffText::Line(_) => {}
+                    DiffText::Address(_) => {}
+                    DiffText::Opcode(m, _) => line.push_str(format!("{:} ", m).as_str()),
+                    DiffText::Argument(a) => line.push_str(&a.to_string()),
+                    DiffText::BranchDest(d) => line.push_str(&d.to_string()),
+                    DiffText::Symbol(s) => {
+                        line.push_str(&s.demangled_name.clone().unwrap_or(s.name.clone()))
+                    }
+                    DiffText::Addend(a) => line.push_str(&a.to_string()),
+                    DiffText::Spacing(s) => {
+                        line.push_str(&std::iter::repeat_n(" ", s as usize).collect::<String>())
+                    }
+                }
+                Ok(())
+            },
+        )?;
+    }
+
+    Ok(ret)
+}
+
+// #[cfg(test)]
+// mod tests {
+//     use crate::*;
+//     #[test]
+//     fn test_get_asm() {
+//         let path = "/home/ethteck/repos/papermario/ver/us/build/papermario.elf";
+//         let asm = get_asm_for_symbol(path, 469993).unwrap();
+//         for line in asm {
+//             println!("{}", line);
+//         }
+//     }
+// }
