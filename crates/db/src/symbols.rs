@@ -90,11 +90,12 @@ pub async fn query_by_id(conn: Pool<Postgres>, query: i64) -> anyhow::Result<Opt
     SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
            symbols.symbol_idx,
-           sources.name AS source_name, 
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
            projects.name AS project_name, projects.id AS project_id, projects.platform
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     LEFT JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.id = $1",
@@ -113,11 +114,12 @@ pub async fn query_by_slug(conn: Pool<Postgres>, query: &str) -> anyhow::Result<
     SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
-           sources.name AS source_name, 
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
            projects.name AS project_name, projects.id AS project_id, projects.platform
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     LEFT JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.slug = $1",
@@ -139,11 +141,12 @@ pub async fn query_by_name(
     SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
-           sources.name AS source_name,
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
            projects.name AS project_name, projects.id AS project_id, projects.platform
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     LEFT JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.name ILIKE $1",
@@ -166,11 +169,12 @@ pub async fn query_by_opcode_hash(
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
-            sources.name AS source_name, 
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
             projects.name AS project_name, projects.id as project_id, projects.platform
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     INNER JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.opcode_hash = $1 AND NOT symbols.id = $2",
@@ -194,11 +198,12 @@ pub async fn query_by_equiv_hash(
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
-            sources.name AS source_name, 
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
             projects.name AS project_name, projects.id as project_id, projects.platform
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     INNER JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.equiv_hash = $1 AND NOT symbols.id = $2",
@@ -221,11 +226,12 @@ pub async fn query_by_exact_hash(
     SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
-            sources.name AS source_name,
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
            versions.id AS \"version_id?\", versions.name AS \"version_name?\",
             projects.name AS project_name, projects.id as project_id, projects.platform
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
     INNER JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
     WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",

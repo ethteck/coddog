@@ -338,17 +338,15 @@ async fn get_symbol_submatches(
     let mut symbol_asm: HashMap<String, Vec<String>> = HashMap::new();
     for window in &windows {
         if !symbol_asm.contains_key(&window.symbol_slug) {
-            let asm_text =
-                coddog_core::get_asm_for_symbol(&window.object_path, window.object_symbol_idx)
-                    .map_err(|e| {
-                        eprintln!("Error getting ASM from bytes: {}", e);
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            json!({"success": false, "message": e.to_string()}).to_string(),
-                        )
-                    })?;
-            symbol_asm.insert(window.symbol_slug.clone(), asm_text);
+            let asm = get_asm_for_symbol(&window.object_path, window.object_symbol_idx)?;
+            symbol_asm.insert(window.symbol_slug.clone(), asm);
         }
+    }
+
+    // add query symbol asm if not already present
+    if !symbol_asm.contains_key(&query_sym.slug) {
+        let asm = get_asm_for_symbol(&query_sym.object_path, query_sym.object_symbol_idx)?;
+        symbol_asm.insert(query_sym.slug.clone(), asm);
     }
 
     let windows: Vec<SubmatchResult> = windows
@@ -361,4 +359,18 @@ async fn get_symbol_submatches(
         StatusCode::OK,
         json!({"query": query_sym, "submatches": windows, "asm": symbol_asm}).to_string(),
     ))
+}
+
+fn get_asm_for_symbol(
+    object_path: &str,
+    symbol_idx: i32,
+) -> Result<Vec<String>, (StatusCode, String)> {
+    let asm_text = coddog_core::get_asm_for_symbol(object_path, symbol_idx).map_err(|e| {
+        eprintln!("Error getting ASM from bytes: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
+    Ok(asm_text)
 }

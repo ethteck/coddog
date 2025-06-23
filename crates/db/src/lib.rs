@@ -38,6 +38,8 @@ pub struct DBSymbol {
     pub exact_hash: i64,
     pub source_id: i64,
     pub source_name: String,
+    pub object_path: String,
+    pub object_symbol_idx: i32,
     pub version_id: Option<i64>,
     pub version_name: Option<String>,
     pub project_id: i64,
