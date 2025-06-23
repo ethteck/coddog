@@ -186,7 +186,10 @@ function SubmatchCard({
 export function SymbolSubmatches({
   slug,
   querySym,
-}: { slug: string; querySym: SymbolMetadata }) {
+}: {
+  slug: string;
+  querySym: SymbolMetadata;
+}) {
   const [page, setPage] = React.useState(0);
 
   React.useEffect(() => {

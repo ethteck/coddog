@@ -4,7 +4,10 @@ import { SymbolMetadata } from '../api/symbols.tsx';
 export function SymbolLabel({
   symbol,
   link = true,
-}: { symbol: SymbolMetadata; link?: boolean }) {
+}: {
+  symbol: SymbolMetadata;
+  link?: boolean;
+}) {
   const content = (
     <>
       <b>{symbol.name}</b> - {symbol.project_name}
