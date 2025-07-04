@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           sources.name AS source_name,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id AS project_id, projects.platform\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    LEFT JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id AS project_id, projects.platform\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN objects ON objects.id = sources.object_id\n    LEFT JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.slug = $1",
   "describe": {
     "columns": [
       {
@@ -60,26 +60,36 @@
       },
       {
         "ordinal": 11,
+        "name": "object_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "object_symbol_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
         "name": "version_id?",
         "type_info": "Int8"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "version_name?",
         "type_info": "Text"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "project_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 15,
+        "ordinal": 17,
         "name": "platform",
         "type_info": "Int4"
       }
@@ -105,8 +115,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "ee9940d44a00e2b08624fb94d5cf11ca283b438d2014edbebf007f7bac3ac06b"
+  "hash": "b0778ba92673a43c16a39568698b79a1c27d90d22895744d9c6e79814894ea80"
 }
