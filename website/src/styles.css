@@ -59,6 +59,13 @@ button {
   transition: background 0.2s;
 }
 
+button:disabled {
+  background: #888;
+  color: #ccc;
+  cursor: default;
+  opacity: 0.7;
+}
+
 footer {
   background: #23272a;
   color: #888;

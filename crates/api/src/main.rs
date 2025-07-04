@@ -252,7 +252,7 @@ async fn get_symbol_submatches(
             )
         })?;
 
-    let windows = coddog_db::query_windows_by_symbol_id(
+    let windows_results = coddog_db::query_windows_by_symbol_id(
         pg_pool.clone(),
         query_sym.id,
         req.window_size,
@@ -283,10 +283,14 @@ async fn get_symbol_submatches(
     //     symbol_asm.insert(query_sym.slug.clone(), asm);
     // }
 
-    let windows: Vec<SubmatchResult> = windows
+    let windows: Vec<SubmatchResult> = windows_results
+        .windows
         .into_iter()
         .map(|w| SubmatchResult::from_db_window(&w))
         .collect();
 
-    Ok((StatusCode::OK, json!({"submatches": windows}).to_string()))
+    Ok((
+        StatusCode::OK,
+        json!({"submatches": windows, "total_count": windows_results.total_count}).to_string(),
+    ))
 }

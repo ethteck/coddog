@@ -4,7 +4,7 @@ pub mod symbols;
 use anyhow::Result;
 use coddog_core::Platform;
 use serde::Serialize;
-use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
+use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::{fs, fs::File, io::Read};
@@ -108,6 +108,11 @@ pub struct DBWindow {
     pub project_id: i64,
     pub project_name: String,
     pub platform: i32,
+}
+
+pub struct DBWindowResults {
+    pub windows: Vec<DBWindow>,
+    pub total_count: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -296,8 +301,9 @@ pub async fn query_windows_by_symbol_id(
     db_window_size: i64,
     limit: i64,
     page: i64,
-) -> Result<Vec<DBWindow>> {
+) -> Result<DBWindowResults> {
     let min_seq_len = window_size - db_window_size;
+    let offset = page * limit;
 
     let rows = sqlx::query!(
         "
@@ -332,27 +338,44 @@ final_sequences AS (
     FROM sequence_groups
     GROUP BY symbol_id, pos_diff, sequence_id
     HAVING COUNT(*) >= $2
+),
+joined_sequences AS (
+    SELECT
+        sources.project_id,
+        projects.name AS project_name,
+        source_id,
+        sources.name AS source_name,
+        fs.symbol_id,
+        symbols.name AS symbol_name,
+        symbols.slug AS symbol_slug,
+        symbols.len AS symbol_len,
+        symbols.symbol_idx AS object_symbol_idx,
+        versions.id AS \"version_id?\",
+        versions.name AS \"version_name?\",
+        projects.platform,
+        objects.id AS object_id,
+        objects.local_path AS object_path,
+        fs.start_query_pos,
+        fs.start_match_pos,
+        fs.length,
+        COUNT(*) OVER() AS total_count
+    FROM final_sequences fs
+    JOIN symbols ON fs.symbol_id = symbols.id
+    JOIN sources ON symbols.source_id = sources.id
+    JOIN objects ON sources.object_id = objects.id
+    JOIN versions ON sources.version_id = versions.id
+    JOIN projects ON sources.project_id = projects.id
 )
-SELECT sources.project_id, projects.name AS project_name, source_id, sources.name AS source_name,
-       symbol_id, symbols.name as symbol_name, symbols.slug AS symbol_slug, symbols.len AS symbol_len,
-       symbols.symbol_idx AS object_symbol_idx,
-        versions.id AS \"version_id?\", versions.name AS \"version_name?\", projects.platform,
-        objects.id AS object_id, objects.local_path AS object_path,
-       start_query_pos, start_match_pos, length
-FROM final_sequences
-JOIN symbols ON symbol_id = symbols.id
-JOIN sources ON symbols.source_id = sources.id
-JOIN objects ON sources.object_id = objects.id
-JOIN versions ON sources.version_id = versions.id
-JOIN projects ON sources.project_id = projects.id
+SELECT *
+FROM joined_sequences
 ORDER BY length DESC, project_id, source_id, symbol_id, start_query_pos, start_match_pos
 LIMIT $3 OFFSET $4
-",symbol_id, min_seq_len, limit, page * limit
+",symbol_id, min_seq_len, limit, offset
     )
     .fetch_all(&conn)
     .await?;
 
-    let res: Vec<DBWindow> = rows
+    let windows: Vec<DBWindow> = rows
         .iter()
         .map(|row| DBWindow {
             query_start: row.start_query_pos.unwrap(),
@@ -375,5 +398,10 @@ LIMIT $3 OFFSET $4
         })
         .collect();
 
-    Ok(res)
+    let total_count = rows.first().map_or(0, |row| row.total_count.unwrap_or(0));
+
+    Ok(DBWindowResults {
+        windows,
+        total_count,
+    })
 }

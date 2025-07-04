@@ -25,6 +25,7 @@ export type SymbolMatchResult = {
 };
 
 export type SymbolSubmatchResult = {
+  total_count: number;
   submatches: SymbolSubmatch[];
 };
 

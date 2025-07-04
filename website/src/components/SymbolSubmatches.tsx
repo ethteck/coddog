@@ -140,6 +140,12 @@ function SubmatchCard({
   );
 }
 
+function resultsHasMore(total: number, pageNum: number, pageSize: number) {
+  const start = pageNum * pageSize;
+  const end = start + pageSize;
+  return total > end;
+}
+
 export function SymbolSubmatches({
   slug,
   querySym,
@@ -153,8 +159,8 @@ export function SymbolSubmatches({
     setPageNum(0);
   }, [slug]);
 
-  var pageSize = 10;
-  var windowSize = 10;
+  const pageSize = 10;
+  const windowSize = 10;
 
   const {
     data: submatchResults,
@@ -186,7 +192,11 @@ export function SymbolSubmatches({
     <div className="content">
       <h3>
         Submatches
-        <span> (page {pageNum + 1}/???) </span>
+        <span>
+          {' '}
+          (page {pageNum + 1}/
+          {Math.floor(submatchResults.total_count / pageSize) + 1}){' '}
+        </span>
       </h3>
 
       <button
@@ -198,14 +208,18 @@ export function SymbolSubmatches({
 
       <button
         onClick={() => {
-          // if (!isPlaceholderData && submatchResults.hasMore) {
-          if (!isPlaceholderData) {
+          if (
+            !isPlaceholderData &&
+            resultsHasMore(submatchResults?.total_count, pageNum, pageSize)
+          ) {
             setPageNum((old) => old + 1);
           }
         }}
         // Disable the Next Page button until we know a next page is available
-        //disabled={isPlaceholderData || !submatchResults?.hasMore}
-        disabled={isPlaceholderData}
+        disabled={
+          isPlaceholderData ||
+          !resultsHasMore(submatchResults?.total_count, pageNum, pageSize)
+        }
       >
         Next Page
       </button>

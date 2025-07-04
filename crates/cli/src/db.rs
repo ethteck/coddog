@@ -307,7 +307,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 }
             }
 
-            if matching_hashes.is_empty() {
+            if matching_hashes.windows.is_empty() {
                 println!("No matches found");
                 return Ok(());
             }
@@ -317,7 +317,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let mut symbol_map: HashMap<i64, String> = HashMap::new();
 
             let results = SubmatchResults::from_db_hashes(
-                &matching_hashes,
+                &matching_hashes.windows,
                 &mut project_map,
                 &mut source_map,
                 &mut symbol_map,
