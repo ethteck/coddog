@@ -4,7 +4,7 @@ pub mod symbols;
 use anyhow::Result;
 use coddog_core::Platform;
 use serde::Serialize;
-use sqlx::{migrate::MigrateDatabase, PgPool, Pool, Postgres, Transaction};
+use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::{fs, fs::File, io::Read};
