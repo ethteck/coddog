@@ -1,3 +1,5 @@
+<img src="https://github.com/user-attachments/assets/1e20e404-6d03-4b4c-945a-bc2e0309969b" width=400 />
+
 # coddog - the dog that sniffs for cod
 
 coddog allows you to more efficiently decompile binaries by reducing redundant work. Whether it's identifying library functions, de-duplicating code, or looking for ways to get the codegen you want for that one portion of a function, coddog will find your cod!
