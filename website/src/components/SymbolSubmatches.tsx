@@ -5,18 +5,15 @@ import {
   SymbolSubmatch,
 } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
-import React, { useState } from 'react';
+import React from 'react';
 
 function SubmatchCard({
   submatch,
-  asm,
   querySym,
 }: {
   submatch: SymbolSubmatch;
-  asm: string[];
   querySym: SymbolMetadata;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const querySymLen = querySym.len;
   const matchSymLen = submatch.symbol.len;
 
@@ -36,9 +33,7 @@ function SubmatchCard({
         padding: '8px 12px',
         marginBottom: '8px',
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-        cursor: 'pointer',
       }}
-      onClick={() => setExpanded(!expanded)}
     >
       <div
         style={{
@@ -52,9 +47,7 @@ function SubmatchCard({
         }}
       >
         <SymbolLabel symbol={submatch.symbol} />
-        <span style={{ fontSize: '0.8rem', color: '#aaa' }}>
-          {expanded ? '▼ Click to collapse' : '▶ Click to expand'}
-        </span>
+        <span style={{ fontSize: '0.8rem', color: '#aaa' }}></span>
       </div>
 
       <div
@@ -143,42 +136,6 @@ function SubmatchCard({
           </span>
         </div>
       </div>
-
-      {expanded && asm.length > 0 && (
-        <div
-          style={{
-            marginTop: '10px',
-            backgroundColor: '#1e2124',
-            borderRadius: '4px',
-            border: '1px solid #4f545c',
-            padding: '8px',
-            overflow: 'auto',
-            maxHeight: '300px',
-          }}
-        >
-          <pre
-            style={{
-              margin: 0,
-              color: '#e5e5e5',
-              fontSize: '0.9rem',
-              fontFamily: 'monospace',
-            }}
-          >
-            <code>{asm.join('\n')}</code>
-          </pre>
-        </div>
-      )}
-      {expanded && asm.length === 0 && (
-        <div
-          style={{
-            marginTop: '10px',
-            color: '#aaa',
-            fontStyle: 'italic',
-          }}
-        >
-          No assembly code available.
-        </div>
-      )}
     </div>
   );
 }
@@ -190,14 +147,14 @@ export function SymbolSubmatches({
   slug: string;
   querySym: SymbolMetadata;
 }) {
-  const [page, setPage] = React.useState(0);
+  const [pageNum, setPageNum] = React.useState(0);
 
   React.useEffect(() => {
-    setPage(0);
+    setPageNum(0);
   }, [slug]);
 
   var pageSize = 10;
-  var minLength = 10;
+  var windowSize = 10;
 
   const {
     data: submatchResults,
@@ -207,8 +164,8 @@ export function SymbolSubmatches({
     isFetching,
     isPlaceholderData,
   } = useQuery({
-    queryKey: ['match', slug, page, pageSize],
-    queryFn: () => fetchSymbolSubmatches(slug, minLength, page, pageSize),
+    queryKey: ['match', slug, pageNum, pageSize],
+    queryFn: () => fetchSymbolSubmatches(slug, windowSize, pageNum, pageSize),
     placeholderData: keepPreviousData,
   });
 
@@ -229,12 +186,12 @@ export function SymbolSubmatches({
     <div className="content">
       <h3>
         Submatches
-        <span> (page {page + 1}/???) </span>
+        <span> (page {pageNum + 1}/???) </span>
       </h3>
 
       <button
-        onClick={() => setPage((old) => Math.max(old - 1, 0))}
-        disabled={page === 0}
+        onClick={() => setPageNum((old) => Math.max(old - 1, 0))}
+        disabled={pageNum === 0}
       >
         Previous Page
       </button>
@@ -243,7 +200,7 @@ export function SymbolSubmatches({
         onClick={() => {
           // if (!isPlaceholderData && submatchResults.hasMore) {
           if (!isPlaceholderData) {
-            setPage((old) => old + 1);
+            setPageNum((old) => old + 1);
           }
         }}
         // Disable the Next Page button until we know a next page is available
@@ -260,12 +217,10 @@ export function SymbolSubmatches({
       ) : (
         <div className="submatch-list">
           {sortedSubmatches.map((submatch) => {
-            const asm = submatchResults.asm.get(submatch.symbol.slug) || [];
             return (
               <SubmatchCard
                 key={`${submatch.symbol.slug}_${submatch.query_start}_${submatch.match_start}_${submatch.len}`}
                 submatch={submatch}
-                asm={asm}
                 querySym={querySym}
               />
             );

@@ -19,16 +19,17 @@ export type SymbolSubmatch = {
 };
 
 export type SymbolMatchResult = {
-  query: SymbolMetadata;
   exact: SymbolMetadata[];
   equivalent: SymbolMetadata[];
   opcode: SymbolMetadata[];
 };
 
 export type SymbolSubmatchResult = {
-  query: SymbolMetadata;
   submatches: SymbolSubmatch[];
-  asm: Map<string, string[]>;
+};
+
+export type SymbolAsm = {
+  asm: string[];
 };
 
 export const fetchSymbolsByName = async (
@@ -59,9 +60,17 @@ export const fetchSymbolMatches = async (
   return res.json();
 };
 
+export const fetchSymbolAsm = async (
+  symbol_slug: string,
+): Promise<SymbolAsm> => {
+  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}/asm`);
+  if (!res.ok) throw new Error('Network response was not ok');
+  return await res.json();
+};
+
 export const fetchSymbolSubmatches = async (
   symbol_slug: string,
-  min_length: number = 8,
+  window_size: number = 8,
   page: number,
   size: number,
 ): Promise<SymbolSubmatchResult> => {
@@ -71,17 +80,12 @@ export const fetchSymbolSubmatches = async (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        slug: symbol_slug,
-        min_length: min_length,
-        page: page,
-        size: size,
+        window_size: window_size,
+        page_num: page,
+        page_size: size,
       }),
     },
   );
   if (!res.ok) throw new Error('Network response was not ok');
-  const data = await res.json();
-  return {
-    ...data,
-    asm: new Map(Object.entries(data.asm)),
-  };
+  return await res.json();
 };

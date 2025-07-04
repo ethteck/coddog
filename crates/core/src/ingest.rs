@@ -26,10 +26,10 @@ fn get_reloc_target(elf: &File, addr: u64, reloc: &Relocation, addend: i64) -> C
             SymbolTarget(symbol.to_string(), addend)
         }
         RelocationTarget::Absolute => {
-            panic!("Absolute reloc: {:#x} => ({})?", addr, addend);
+            panic!("Absolute reloc: {addr:#x} => ({addend})?");
         }
         _ => {
-            panic!("Unsupported reloc: {:#x} => ({})?", addr, addend);
+            panic!("Unsupported reloc: {addr:#x} => ({addend})?");
         }
     }
 }

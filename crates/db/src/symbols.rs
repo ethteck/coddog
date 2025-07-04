@@ -23,14 +23,6 @@ pub struct QuerySymbolsBySlugRequest {
     pub slug: String,
 }
 
-#[derive(Deserialize)]
-pub struct QueryWindowsRequest {
-    pub slug: String,
-    pub min_length: i64,
-    pub page: i64,
-    pub size: i64,
-}
-
 pub async fn create(
     tx: &mut Transaction<'_, Postgres>,
     source_id: i64,

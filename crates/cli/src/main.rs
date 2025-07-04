@@ -292,7 +292,7 @@ fn get_unmatched_funcs(base_dir: &Path, config: &Version) -> Option<Vec<String>>
 fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<Vec<Symbol>> {
     let unmatched_funcs = get_unmatched_funcs(base_dir, config);
     let platform =
-        Platform::from_name(platform).unwrap_or_else(|| panic!("Invalid platform: {}", platform));
+        Platform::from_name(platform).unwrap_or_else(|| panic!("Invalid platform: {platform}"));
 
     if let Some(elf_path) = get_full_path(base_dir, config.paths.elf.clone()) {
         let elf_data = fs::read(elf_path)?;

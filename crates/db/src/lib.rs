@@ -70,12 +70,6 @@ pub struct SymbolMetadata {
     pub platform: i32,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct SymbolData {
-    pub metadata: SymbolMetadata,
-    pub asm: Vec<String>,
-}
-
 impl SymbolMetadata {
     pub fn from_db_symbol(symbol: &DBSymbol) -> Self {
         let platform = Platform::from_id(symbol.platform).expect("Unexpected platform ID");
@@ -153,7 +147,7 @@ pub async fn init() -> Result<PgPool> {
     if !Postgres::database_exists(&db_path).await.unwrap_or(false) {
         match Postgres::create_database(&db_path).await {
             Ok(_) => {
-                println!("Database created at {}", db_path);
+                println!("Database created at {db_path}");
             }
             Err(_) => {
                 return Err(anyhow::anyhow!("Error creating database"));
@@ -198,7 +192,7 @@ pub async fn create_object(tx: &mut Transaction<'_, Postgres>, filepath: &PathBu
 
     let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
     let target_path = Path::new(&bin_path);
-    let target_path = target_path.join(format!("{}.bin", hash));
+    let target_path = target_path.join(format!("{hash}.bin"));
 
     let hash_str = hash.to_hex().to_string();
 
@@ -337,6 +331,7 @@ final_sequences AS (
         COUNT(*) AS length
     FROM sequence_groups
     GROUP BY symbol_id, pos_diff, sequence_id
+    HAVING COUNT(*) >= $2
 )
 SELECT sources.project_id, projects.name AS project_name, source_id, sources.name AS source_name,
        symbol_id, symbols.name as symbol_name, symbols.slug AS symbol_slug, symbols.len AS symbol_len,
@@ -350,7 +345,6 @@ JOIN sources ON symbols.source_id = sources.id
 JOIN objects ON sources.object_id = objects.id
 JOIN versions ON sources.version_id = versions.id
 JOIN projects ON sources.project_id = projects.id
-WHERE length >= $2
 ORDER BY length DESC, project_id, source_id, symbol_id, start_query_pos, start_match_pos
 LIMIT $3 OFFSET $4
 ",symbol_id, min_seq_len, limit, page * limit

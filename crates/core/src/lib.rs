@@ -289,7 +289,7 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<Stri
                     DiffText::Basic(s) => line.push_str(s),
                     DiffText::Line(_) => {}
                     DiffText::Address(_) => {}
-                    DiffText::Opcode(m, _) => line.push_str(format!("{:} ", m).as_str()),
+                    DiffText::Opcode(m, _) => line.push_str(format!("{m:} ").as_str()),
                     DiffText::Argument(a) => line.push_str(&a.to_string()),
                     DiffText::BranchDest(d) => line.push_str(&d.to_string()),
                     DiffText::Symbol(s) => {

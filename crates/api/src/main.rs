@@ -1,16 +1,21 @@
+mod projects;
+
+use crate::projects::{create_project, delete_project, get_project, get_projects, update_project};
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use coddog_db::projects::CreateProjectRequest;
+use axum_validated_extractors::ValidatedJson;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
-use coddog_db::{SubmatchResult, SymbolMetadata};
+use coddog_db::{DBSymbol, SubmatchResult, SymbolMetadata};
+use serde::Deserialize;
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
+use validator::{Validate, ValidationError};
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +34,7 @@ async fn main() {
         .await
         .expect("Could not bind to server address");
 
-    println!("Listening on {}", server_address);
+    println!("Listening on {server_address}");
 
     // Set up CORS
     let cors_layer = CorsLayer::new()
@@ -48,6 +53,7 @@ async fn main() {
         )
         .route("/symbols", post(query_symbols_by_name))
         .route("/symbols/{slug}", get(query_symbols_by_slug))
+        .route("/symbols/{slug}/asm", get(get_symbol_asm))
         .route("/symbols/{slug}/match", get(get_symbol_matches))
         .route("/symbols/{slug}/submatch", post(get_symbol_submatches))
         .with_state(db_pool)
@@ -58,89 +64,6 @@ async fn main() {
         .expect("Failed to start server");
 }
 
-async fn get_projects(
-    State(pg_pool): State<PgPool>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let projects = coddog_db::projects::query_all(pg_pool).await.map_err(|e| {
-        eprintln!("Error fetching projects: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            json!({"success": false, "message": e.to_string()}).to_string(),
-        )
-    })?;
-
-    Ok((StatusCode::OK, json!(projects).to_string()))
-}
-
-async fn create_project(
-    State(pg_pool): State<PgPool>,
-    Json(req): Json<CreateProjectRequest>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let res = coddog_db::projects::create(pg_pool, &req)
-        .await
-        .map_err(|e| {
-            eprintln!("Error creating project: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
-
-    Ok((StatusCode::CREATED, json!(res).to_string()))
-}
-
-async fn get_project(
-    State(pg_pool): State<PgPool>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let project = coddog_db::projects::query_by_id(pg_pool, id)
-        .await
-        .map_err(|e| {
-            eprintln!("Error fetching project: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
-
-    Ok((StatusCode::OK, json!(project).to_string()))
-}
-
-async fn update_project(
-    State(pg_pool): State<PgPool>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-    Json(req): Json<coddog_db::projects::UpdateProjectRequest>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    coddog_db::projects::update(pg_pool, id, &req)
-        .await
-        .map_err(|e| {
-            eprintln!("Error updating project: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
-
-    Ok((StatusCode::OK, json!(()).to_string()))
-}
-
-async fn delete_project(
-    State(pg_pool): State<PgPool>,
-    axum::extract::Path(id): axum::extract::Path<i64>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    coddog_db::projects::delete(pg_pool, id)
-        .await
-        .map_err(|e| {
-            eprintln!("Error deleting project: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?;
-
-    Ok((StatusCode::NO_CONTENT, json!(()).to_string()))
-}
-
 async fn query_symbols_by_name(
     State(pg_pool): State<PgPool>,
     Json(req): Json<QuerySymbolsByNameRequest>,
@@ -148,7 +71,7 @@ async fn query_symbols_by_name(
     let matches = coddog_db::symbols::query_by_name(pg_pool, &req)
         .await
         .map_err(|e| {
-            eprintln!("Error fetching matches: {}", e);
+            eprintln!("Error fetching matches: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -160,14 +83,11 @@ async fn query_symbols_by_name(
     Ok((StatusCode::OK, json!(matches).to_string()))
 }
 
-async fn query_symbols_by_slug(
-    State(pg_pool): State<PgPool>,
-    axum::extract::Path(slug): axum::extract::Path<String>,
-) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &slug)
+async fn get_sym_for_slug(pg_pool: PgPool, slug: &str) -> Result<DBSymbol, (StatusCode, String)> {
+    coddog_db::symbols::query_by_slug(pg_pool.clone(), slug)
         .await
         .map_err(|e| {
-            eprintln!("Error fetching symbol by slug: {}", e);
+            eprintln!("Error fetching symbol by slug: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -178,7 +98,14 @@ async fn query_symbols_by_slug(
                 StatusCode::NOT_FOUND,
                 json!({"success": false, "message": "Symbol not found"}).to_string(),
             )
-        })?;
+        })
+}
+
+async fn query_symbols_by_slug(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let sym = get_sym_for_slug(pg_pool, &slug).await?;
 
     Ok((
         StatusCode::OK,
@@ -186,32 +113,43 @@ async fn query_symbols_by_slug(
     ))
 }
 
+fn get_asm_for_symbol(
+    object_path: &str,
+    symbol_idx: i32,
+) -> Result<Vec<String>, (StatusCode, String)> {
+    let asm_text = coddog_core::get_asm_for_symbol(object_path, symbol_idx).map_err(|e| {
+        eprintln!("Error getting ASM from symbol {symbol_idx} in {object_path}: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
+    Ok(asm_text)
+}
+
+async fn get_symbol_asm(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let sym = get_sym_for_slug(pg_pool.clone(), &slug).await?;
+
+    let asm_text = get_asm_for_symbol(&sym.object_path, sym.object_symbol_idx)?;
+
+    Ok((StatusCode::OK, json!({"asm": asm_text}).to_string()))
+}
+
 async fn get_symbol_matches(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let query_sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &slug)
-        .await
-        .map_err(|e| {
-            eprintln!("Error fetching symbol by slug: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({"success": false, "message": e.to_string()}).to_string(),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                json!({"success": false, "message": "Symbol not found"}).to_string(),
-            )
-        })?;
+    let query_sym = get_sym_for_slug(pg_pool.clone(), &slug).await?;
 
     let mut found_stuff = HashSet::new();
 
     let exact_matches = coddog_db::symbols::query_by_exact_hash(pg_pool.clone(), &query_sym)
         .await
         .map_err(|e| {
-            eprintln!("Error getting exact matches: {}", e);
+            eprintln!("Error getting exact matches: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -223,7 +161,7 @@ async fn get_symbol_matches(
         coddog_db::symbols::query_by_equiv_hash(pg_pool.clone(), &query_sym)
             .await
             .map_err(|e| {
-                eprintln!("Error getting equivalent matches: {}", e);
+                eprintln!("Error getting equivalent matches: {e}");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     json!({"success": false, "message": e.to_string()}).to_string(),
@@ -235,7 +173,7 @@ async fn get_symbol_matches(
     let mut opcode_matches = coddog_db::symbols::query_by_opcode_hash(pg_pool.clone(), &query_sym)
         .await
         .map_err(|e| {
-            eprintln!("Error getting opcode matches: {}", e);
+            eprintln!("Error getting opcode matches: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -243,7 +181,6 @@ async fn get_symbol_matches(
         })?;
     opcode_matches.retain(|m| !found_stuff.contains(&m.id));
 
-    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
     let exact_matches: Vec<SymbolMetadata> = exact_matches
         .iter()
         .map(SymbolMetadata::from_db_symbol)
@@ -259,53 +196,50 @@ async fn get_symbol_matches(
 
     Ok((
         StatusCode::OK,
-        json!({"query": query_sym, "exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
+        json!({"exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
             .to_string(),
     ))
 }
 
+#[derive(Deserialize, Validate)]
+struct QueryWindowsRequest {
+    #[validate(custom(function = "validate_window_size"))]
+    pub window_size: i64,
+    #[validate(range(min = 0))]
+    pub page_num: i64,
+    #[validate(range(min = 1, max = 100))]
+    pub page_size: i64,
+}
+
+fn validate_window_size(input: i64) -> Result<(), ValidationError> {
+    let db_window_size = std::env::var("DB_WINDOW_SIZE")
+        .expect("DB_WINDOW_SIZE must be set")
+        .parse::<i64>()
+        .unwrap();
+
+    if input < db_window_size {
+        return Err(ValidationError::new(
+            "window_size must be greater than or equal to 8",
+        ));
+    }
+
+    Ok(())
+}
+
 async fn get_symbol_submatches(
     State(pg_pool): State<PgPool>,
-    Json(req): Json<coddog_db::symbols::QueryWindowsRequest>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+    ValidatedJson(req): ValidatedJson<QueryWindowsRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
     let db_window_size = std::env::var("DB_WINDOW_SIZE")
         .expect("DB_WINDOW_SIZE must be set")
         .parse::<i64>()
         .unwrap();
 
-    if req.size <= 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            json!({"success": false, "message": "size must be greater than 0"}).to_string(),
-        ));
-    }
-
-    if req.page < 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            json!({"success": false, "message": "page must be at least 0"}).to_string(),
-        ));
-    }
-
-    if req.size > 100 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            json!({"success": false, "message": "size must be 100 or less"}).to_string(),
-        ));
-    }
-
-    if req.min_length < db_window_size {
-        let msg = format!("min_length must be {} or greater", db_window_size);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            json!({"success": false, "message": msg}).to_string(),
-        ));
-    }
-
-    let query_sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &req.slug)
+    let query_sym = coddog_db::symbols::query_by_slug(pg_pool.clone(), &slug)
         .await
         .map_err(|e| {
-            eprintln!("Error fetching symbol by slug: {}", e);
+            eprintln!("Error fetching symbol by slug: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 json!({"success": false, "message": e.to_string()}).to_string(),
@@ -321,56 +255,38 @@ async fn get_symbol_submatches(
     let windows = coddog_db::query_windows_by_symbol_id(
         pg_pool.clone(),
         query_sym.id,
-        req.min_length,
+        req.window_size,
         db_window_size,
-        req.size,
-        req.page,
+        req.page_size,
+        req.page_num,
     )
     .await
     .map_err(|e| {
-        eprintln!("Error fetching symbol by ID: {}", e);
+        eprintln!("Error fetching symbol by ID: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             json!({"success": false, "message": e.to_string()}).to_string(),
         )
     })?;
 
-    let mut symbol_asm: HashMap<String, Vec<String>> = HashMap::new();
-    for window in &windows {
-        if !symbol_asm.contains_key(&window.symbol_slug) {
-            let asm = get_asm_for_symbol(&window.object_path, window.object_symbol_idx)?;
-            symbol_asm.insert(window.symbol_slug.clone(), asm);
-        }
-    }
-
-    // add query symbol asm if not already present
-    if !symbol_asm.contains_key(&query_sym.slug) {
-        let asm = get_asm_for_symbol(&query_sym.object_path, query_sym.object_symbol_idx)?;
-        symbol_asm.insert(query_sym.slug.clone(), asm);
-    }
+    // let mut symbol_asm: HashMap<String, Vec<String>> = HashMap::new();
+    // for window in &windows {
+    //     if !symbol_asm.contains_key(&window.symbol_slug) {
+    //         let asm = get_asm_for_symbol(&window.object_path, window.object_symbol_idx)?;
+    //         symbol_asm.insert(window.symbol_slug.clone(), asm);
+    //     }
+    // }
+    //
+    // // add query symbol asm if not already present
+    // if !symbol_asm.contains_key(&query_sym.slug) {
+    //     let asm = get_asm_for_symbol(&query_sym.object_path, query_sym.object_symbol_idx)?;
+    //     symbol_asm.insert(query_sym.slug.clone(), asm);
+    // }
 
     let windows: Vec<SubmatchResult> = windows
         .into_iter()
         .map(|w| SubmatchResult::from_db_window(&w))
         .collect();
-    let query_sym = SymbolMetadata::from_db_symbol(&query_sym);
 
-    Ok((
-        StatusCode::OK,
-        json!({"query": query_sym, "submatches": windows, "asm": symbol_asm}).to_string(),
-    ))
-}
-
-fn get_asm_for_symbol(
-    object_path: &str,
-    symbol_idx: i32,
-) -> Result<Vec<String>, (StatusCode, String)> {
-    let asm_text = coddog_core::get_asm_for_symbol(object_path, symbol_idx).map_err(|e| {
-        eprintln!("Error getting ASM from bytes: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            json!({"success": false, "message": e.to_string()}).to_string(),
-        )
-    })?;
-    Ok(asm_text)
+    Ok((StatusCode::OK, json!({"submatches": windows}).to_string()))
 }
