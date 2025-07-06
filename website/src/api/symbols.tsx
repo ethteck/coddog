@@ -11,22 +11,21 @@ export type SymbolMetadata = {
   platform: number;
 };
 
-export type SymbolSubmatch = {
+export type SymbolMatchResult = {
+  subtype: 'exact' | 'equivalent' | 'opcode';
+  symbol: SymbolMetadata;
+};
+
+export type SymbolSubmatchResult = {
   symbol: SymbolMetadata;
   query_start: number;
   match_start: number;
   len: number;
 };
 
-export type SymbolMatchResult = {
-  exact: SymbolMetadata[];
-  equivalent: SymbolMetadata[];
-  opcode: SymbolMetadata[];
-};
-
-export type SymbolSubmatchResult = {
+export type SymbolSubmatchResults = {
   total_count: number;
-  submatches: SymbolSubmatch[];
+  submatches: SymbolSubmatchResult[];
 };
 
 export type SymbolAsm = {
@@ -55,7 +54,7 @@ export const fetchSymbolMetadata = async (
 
 export const fetchSymbolMatches = async (
   symbol_slug: string,
-): Promise<SymbolMatchResult> => {
+): Promise<SymbolMatchResult[]> => {
   const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}/match`);
   if (!res.ok) throw new Error('Network response was not ok');
   return res.json();
@@ -74,7 +73,7 @@ export const fetchSymbolSubmatches = async (
   page: number,
   size: number,
   window_size = 8,
-): Promise<SymbolSubmatchResult> => {
+): Promise<SymbolSubmatchResults> => {
   const res = await fetch(
     `http://localhost:3000/symbols/${symbol_slug}/submatch`,
     {

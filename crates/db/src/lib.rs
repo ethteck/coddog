@@ -56,6 +56,13 @@ impl Display for DBSymbol {
     }
 }
 
+impl DBSymbol {
+    pub fn get_num_insns(&self) -> i32 {
+        let platform = Platform::from_id(self.platform).expect("Unexpected platform ID");
+        self.len / platform.arch().insn_length() as i32
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct SymbolMetadata {
     pub slug: String,
@@ -72,12 +79,10 @@ pub struct SymbolMetadata {
 
 impl SymbolMetadata {
     pub fn from_db_symbol(symbol: &DBSymbol) -> Self {
-        let platform = Platform::from_id(symbol.platform).expect("Unexpected platform ID");
-        let num_insns = symbol.len / platform.arch().insn_length() as i32;
         Self {
             slug: symbol.slug.clone(),
             name: symbol.name.clone(),
-            len: num_insns,
+            len: symbol.get_num_insns(),
             source_id: symbol.source_id,
             source_name: symbol.source_name.clone(),
             version_id: symbol.version_id,

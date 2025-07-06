@@ -8,7 +8,7 @@ use axum::{Json, Router};
 use axum_validated_extractors::ValidatedJson;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, SubmatchResult, SymbolMetadata};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -138,6 +138,12 @@ async fn get_symbol_asm(
     Ok((StatusCode::OK, json!({"asm": asm_text}).to_string()))
 }
 
+#[derive(Clone, Serialize)]
+struct SymbolMatchResult {
+    subtype: String,
+    symbol: SymbolMetadata,
+}
+
 async fn get_symbol_matches(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(slug): axum::extract::Path<String>,
@@ -181,30 +187,46 @@ async fn get_symbol_matches(
         })?;
     opcode_matches.retain(|m| !found_stuff.contains(&m.id));
 
-    let exact_matches: Vec<SymbolMetadata> = exact_matches
+    let exact_matches: Vec<SymbolMatchResult> = exact_matches
         .iter()
-        .map(SymbolMetadata::from_db_symbol)
+        .map(|s| SymbolMatchResult {
+            subtype: "exact".to_string(),
+            symbol: SymbolMetadata::from_db_symbol(s),
+        })
         .collect();
-    let equivalent_matches: Vec<SymbolMetadata> = equivalent_matches
+    let equivalent_matches: Vec<SymbolMatchResult> = equivalent_matches
         .iter()
-        .map(SymbolMetadata::from_db_symbol)
+        .map(|s| SymbolMatchResult {
+            subtype: "equivalent".to_string(),
+            symbol: SymbolMetadata::from_db_symbol(s),
+        })
         .collect();
-    let opcode_matches: Vec<SymbolMetadata> = opcode_matches
+    let opcode_matches: Vec<SymbolMatchResult> = opcode_matches
         .iter()
-        .map(SymbolMetadata::from_db_symbol)
+        .map(|s| SymbolMatchResult {
+            subtype: "opcode".to_string(),
+            symbol: SymbolMetadata::from_db_symbol(s),
+        })
         .collect();
 
-    Ok((
-        StatusCode::OK,
-        json!({"exact": exact_matches, "equivalent": equivalent_matches, "opcode": opcode_matches})
-            .to_string(),
-    ))
+    let all_matches: Vec<SymbolMatchResult> = exact_matches
+        .iter()
+        .chain(equivalent_matches.iter())
+        .chain(opcode_matches.iter())
+        .cloned()
+        .collect();
+
+    Ok((StatusCode::OK, json!(all_matches).to_string()))
 }
 
 #[derive(Deserialize, Validate)]
-struct QueryWindowsRequest {
+struct GetSubmatchesRequest {
     #[validate(custom(function = "validate_window_size"))]
     pub window_size: i64,
+    #[validate(range(min = 0))]
+    pub start: Option<i64>,
+    #[validate(range(min = 0))]
+    pub end: Option<i64>,
     #[validate(range(min = 0))]
     pub page_num: i64,
     #[validate(range(min = 1, max = 100))]
@@ -229,7 +251,7 @@ fn validate_window_size(input: i64) -> Result<(), ValidationError> {
 async fn get_symbol_submatches(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(slug): axum::extract::Path<String>,
-    ValidatedJson(req): ValidatedJson<QueryWindowsRequest>,
+    ValidatedJson(req): ValidatedJson<GetSubmatchesRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
     let db_window_size = std::env::var("DB_WINDOW_SIZE")
         .expect("DB_WINDOW_SIZE must be set")
@@ -251,6 +273,10 @@ async fn get_symbol_submatches(
                 json!({"success": false, "message": "Symbol not found"}).to_string(),
             )
         })?;
+
+    // let start = req.start.unwrap_or(0);
+    // let end = req.end.unwrap_or(query_sym.get_num_insns().into());
+    // TODO use these
 
     let windows_results = coddog_db::query_windows_by_symbol_id(
         pg_pool.clone(),

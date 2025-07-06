@@ -1,17 +1,17 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import React from 'react';
 import {
   fetchSymbolSubmatches,
   type SymbolMetadata,
-  type SymbolSubmatch,
+  type SymbolSubmatchResult,
 } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
-import React from 'react';
 
 function SubmatchCard({
   submatch,
   querySym,
 }: {
-  submatch: SymbolSubmatch;
+  submatch: SymbolSubmatchResult;
   querySym: SymbolMetadata;
 }) {
   const querySymLen = querySym.len;
@@ -192,15 +192,7 @@ export function SymbolSubmatches({
 
   return (
     <div className="content">
-      <h3>
-        Submatches
-        <span>
-          {' '}
-          (page {pageNum + 1}/
-          {Math.floor(submatchResults.total_count / pageSize) + 1}){' '}
-        </span>
-      </h3>
-
+      <h3>Submatches ({submatchResults.total_count})</h3>
       <button
         type="button"
         onClick={() => setPageNum((old) => Math.max(old - 1, 0))}
@@ -208,7 +200,6 @@ export function SymbolSubmatches({
       >
         Previous Page
       </button>
-
       <button
         type="button"
         onClick={() => {
@@ -227,9 +218,8 @@ export function SymbolSubmatches({
       >
         Next Page
       </button>
-
+      {pageNum + 1} / {Math.floor(submatchResults.total_count / pageSize) + 1}
       {isFetching ? <span> Loading...</span> : null}
-
       {sortedSubmatches.length === 0 ? (
         <p>No submatches found.</p>
       ) : (

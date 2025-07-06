@@ -1,7 +1,7 @@
 import { useDebouncedState } from '@tanstack/react-pacer';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import React, { useState, useId } from 'react';
+import React, { useId, useState } from 'react';
 import { fetchSymbolsByName } from '../../api/symbols.tsx';
 import { SymbolLabel } from '../../components/SymbolLabel.tsx';
 
@@ -52,7 +52,7 @@ function SymbolSearch() {
   }
 
   return (
-    <div className="content">
+    <>
       <h2>Symbol lookup</h2>
       <p>Find matches and submatches for the symbol with the given name</p>
       <input
@@ -73,6 +73,6 @@ function SymbolSearch() {
           </li>
         ))}
       </ul>
-    </div>
+    </>
   );
 }
