@@ -32,27 +32,21 @@ function Admin() {
   }
 
   return (
-    <>
-      <div className="projects">
-        {data.map((project) => (
-          <div className="project" key={project.id}>
-            <h2>{project.name}</h2>
-            <p>Platform: {project.platform}</p>
-            {project.repo && (
-              <p>
-                Repo:{' '}
-                <Link
-                  to={project.repo}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {project.repo}
-                </Link>
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </>
+    <div className="projects">
+      {data.map((project) => (
+        <div className="project" key={project.id}>
+          <h2>{project.name}</h2>
+          <p>Platform: {project.platform}</p>
+          {project.repo && (
+            <p>
+              Repo:{' '}
+              <Link to={project.repo} target="_blank" rel="noopener noreferrer">
+                {project.repo}
+              </Link>
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

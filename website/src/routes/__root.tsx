@@ -1,4 +1,5 @@
 import { createRootRoute, Link, Outlet } from '@tanstack/react-router';
+import logo from '../assets/coddoglogo.svg';
 
 export const Route = createRootRoute({
   head: () => ({
@@ -10,7 +11,7 @@ export const Route = createRootRoute({
   }),
   component: () => (
     <>
-      <h2>coddog</h2>
+      <img src={logo} width="100" alt="coddog logo" className="logo" />
       <div className="p-2 flex gap-2">
         <Link to="/" className="[&.active]:font-bold">
           Home

@@ -71,9 +71,9 @@ export const fetchSymbolAsm = async (
 
 export const fetchSymbolSubmatches = async (
   symbol_slug: string,
-  window_size: number = 8,
   page: number,
   size: number,
+  window_size = 8,
 ): Promise<SymbolSubmatchResult> => {
   const res = await fetch(
     `http://localhost:3000/symbols/${symbol_slug}/submatch`,

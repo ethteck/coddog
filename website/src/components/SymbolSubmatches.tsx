@@ -1,8 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   fetchSymbolSubmatches,
-  SymbolMetadata,
-  SymbolSubmatch,
+  type SymbolMetadata,
+  type SymbolSubmatch,
 } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
 import React from 'react';
@@ -47,7 +47,7 @@ function SubmatchCard({
         }}
       >
         <SymbolLabel symbol={submatch.symbol} />
-        <span style={{ fontSize: '0.8rem', color: '#aaa' }}></span>
+        <span style={{ fontSize: '0.8rem', color: '#aaa' }} />
       </div>
 
       <div
@@ -59,6 +59,7 @@ function SubmatchCard({
       >
         <div style={{ display: 'flex', gap: '5px' }}>
           <svg width="30px" height="100px">
+            <title>Query Match</title>
             <rect
               x="0"
               y="0"
@@ -72,16 +73,17 @@ function SubmatchCard({
 
             <rect
               x="5%"
-              y={queryOffsetPercent * 100 + '%'}
+              y={`${queryOffsetPercent * 100}%`}
               width="90%"
-              height={queryHeightPercent * 100 + '%'}
+              height={`${queryHeightPercent * 100}%`}
               style={{
                 fill: 'saddlebrown',
               }}
-            ></rect>
+            />
           </svg>
 
           <svg width="30px" height="100px">
+            <title>Match Match lol</title>
             <rect
               x="0"
               y="0"
@@ -95,13 +97,13 @@ function SubmatchCard({
 
             <rect
               x="5%"
-              y={matchOffsetPercent * 100 + '%'}
+              y={`${matchOffsetPercent * 100}%`}
               width="90%"
-              height={matchHeightPercent * 100 + '%'}
+              height={`${matchHeightPercent * 100}%`}
               style={{
                 fill: 'saddlebrown',
               }}
-            ></rect>
+            />
           </svg>
         </div>
 
@@ -171,7 +173,7 @@ export function SymbolSubmatches({
     isPlaceholderData,
   } = useQuery({
     queryKey: ['match', slug, pageNum, pageSize],
-    queryFn: () => fetchSymbolSubmatches(slug, windowSize, pageNum, pageSize),
+    queryFn: () => fetchSymbolSubmatches(slug, pageNum, pageSize, windowSize),
     placeholderData: keepPreviousData,
   });
 
@@ -200,6 +202,7 @@ export function SymbolSubmatches({
       </h3>
 
       <button
+        type="button"
         onClick={() => setPageNum((old) => Math.max(old - 1, 0))}
         disabled={pageNum === 0}
       >
@@ -207,6 +210,7 @@ export function SymbolSubmatches({
       </button>
 
       <button
+        type="button"
         onClick={() => {
           if (
             !isPlaceholderData &&

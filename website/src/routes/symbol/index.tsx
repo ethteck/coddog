@@ -1,7 +1,7 @@
 import { useDebouncedState } from '@tanstack/react-pacer';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import React, { useState } from 'react';
+import React, { useState, useId } from 'react';
 import { fetchSymbolsByName } from '../../api/symbols.tsx';
 import { SymbolLabel } from '../../components/SymbolLabel.tsx';
 
@@ -10,7 +10,7 @@ type SymbolSearch = {
 };
 
 export const Route = createFileRoute('/symbol/')({
-  component: Symbol,
+  component: SymbolSearch,
   validateSearch: (search: Record<string, unknown>): SymbolSearch => {
     return {
       name: (search?.name as string) || '',
@@ -18,10 +18,11 @@ export const Route = createFileRoute('/symbol/')({
   },
 });
 
-function Symbol() {
+function SymbolSearch() {
   const { name } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [query, setQuery] = useState(name);
+  const inputId = useId();
   const [debouncedQuery, setDebouncedQuery] = useDebouncedState(query, {
     wait: 300,
     enabled: query.length > 0,
@@ -51,31 +52,27 @@ function Symbol() {
   }
 
   return (
-    <>
-      <div className="content">
-        <h2>Symbol lookup</h2>
-        <p>Find matches and submatches for the symbol with the given name</p>
-        <form onSubmit={(e) => e.preventDefault()}>
-          <input
-            id="symbolNameInput"
-            type="text"
-            placeholder="Enter symbol name"
-            value={query}
-            onChange={handleQueryChange}
-          />
-        </form>
-        {isLoading && <div>Loading...</div>}
-        {isError && (
-          <div style={{ color: 'red' }}>{(error as Error).message}</div>
-        )}
-        <ul>
-          {symbols?.map((sym) => (
-            <li key={sym.slug}>
-              <SymbolLabel symbol={sym} />
-            </li>
-          ))}
-        </ul>
-      </div>
-    </>
+    <div className="content">
+      <h2>Symbol lookup</h2>
+      <p>Find matches and submatches for the symbol with the given name</p>
+      <input
+        id={inputId}
+        type="text"
+        placeholder="Enter symbol name"
+        value={query}
+        onChange={handleQueryChange}
+      />
+      {isLoading && <div>Loading...</div>}
+      {isError && (
+        <div style={{ color: 'red' }}>{(error as Error).message}</div>
+      )}
+      <ul>
+        {symbols?.map((sym) => (
+          <li key={sym.slug}>
+            <SymbolLabel symbol={sym} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

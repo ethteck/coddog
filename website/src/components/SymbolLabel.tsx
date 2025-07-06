@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { SymbolMetadata } from '../api/symbols.tsx';
+import type { SymbolMetadata } from '../api/symbols.tsx';
 
 export function SymbolLabel({
   symbol,

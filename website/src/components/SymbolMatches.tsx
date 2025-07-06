@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchSymbolMatches, SymbolMetadata } from '../api/symbols.tsx';
+import { fetchSymbolMatches, type SymbolMetadata } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
 
 export function SymbolMatches({ slug }: { slug: string }) {
