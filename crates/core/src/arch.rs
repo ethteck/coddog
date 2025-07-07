@@ -38,8 +38,9 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
         Platform::Gc | Platform::Wii => bytes
             .chunks_exact(insn_length)
             .map(|c| {
-                ppc750cl::Opcode::_detect(
+                powerpc::Opcode::detect(
                     platform.endianness().read_u32_bytes(c.try_into().unwrap()),
+                    powerpc::Extensions::none(),
                 ) as u16
             })
             .collect(),
@@ -234,7 +235,7 @@ pub(crate) fn get_equivalence_hash(
                         }
                     }
                     Platform::Gc | Platform::Wii => {
-                        let instruction = ppc750cl::Ins::new(code);
+                        let instruction = powerpc::Ins::new(code, powerpc::Extensions::none());
 
                         // hash opcode
                         let opcode = instruction.op as u16;
@@ -243,12 +244,12 @@ pub(crate) fn get_equivalence_hash(
                         // hash operands
                         for a in instruction.basic().args {
                             match a {
-                                ppc750cl::Argument::None => {}
-                                ppc750cl::Argument::Simm(_)
-                                | ppc750cl::Argument::Uimm(_)
-                                | ppc750cl::Argument::Offset(_)
-                                | ppc750cl::Argument::BranchDest(_)
-                                | ppc750cl::Argument::OpaqueU(_) => {
+                                powerpc::Argument::None => {}
+                                powerpc::Argument::Simm(_)
+                                | powerpc::Argument::Uimm(_)
+                                | powerpc::Argument::Offset(_)
+                                | powerpc::Argument::BranchDest(_)
+                                | powerpc::Argument::OpaqueU(_) => {
                                     if !hashed_reloc {
                                         a.hash(&mut hasher);
                                     }

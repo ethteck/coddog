@@ -424,7 +424,7 @@ dependencies = [
  "mapfile_parser",
  "objdiff-core",
  "object 0.37.1",
- "ppc750cl",
+ "powerpc",
  "rabbitizer",
 ]
 
@@ -2117,6 +2117,12 @@ name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+
+[[package]]
+name = "powerpc"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3c581d9feb294e6767e625557cff34e93f3f5a886699a53ff3f737a2e6d2d9a"
 
 [[package]]
 name = "ppc750cl"
