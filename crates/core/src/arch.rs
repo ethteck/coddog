@@ -40,7 +40,7 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
             .map(|c| {
                 powerpc::Opcode::detect(
                     platform.endianness().read_u32_bytes(c.try_into().unwrap()),
-                    powerpc::Extensions::none(),
+                    powerpc::Extensions::gekko_broadway(),
                 ) as u16
             })
             .collect(),
@@ -235,11 +235,11 @@ pub(crate) fn get_equivalence_hash(
                         }
                     }
                     Platform::Gc | Platform::Wii => {
-                        let instruction = powerpc::Ins::new(code, powerpc::Extensions::none());
+                        let instruction =
+                            powerpc::Ins::new(code, powerpc::Extensions::gekko_broadway());
 
                         // hash opcode
-                        let opcode = instruction.op as u16;
-                        opcode.hash(&mut hasher);
+                        instruction.op.hash(&mut hasher);
 
                         // hash operands
                         for a in instruction.basic().args {
