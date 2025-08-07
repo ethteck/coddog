@@ -12,7 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SymbolIndexRouteImport } from './routes/symbol/index'
-import { Route as SymbolSymbolSlugRouteImport } from './routes/symbol/$symbolSlug'
+import { Route as SymbolSymbolSlugIndexRouteImport } from './routes/symbol/$symbolSlug/index'
+import { Route as SymbolSymbolSlugSubmatchRouteImport } from './routes/symbol/$symbolSlug/submatch'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -29,44 +30,70 @@ const SymbolIndexRoute = SymbolIndexRouteImport.update({
   path: '/symbol/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SymbolSymbolSlugRoute = SymbolSymbolSlugRouteImport.update({
-  id: '/symbol/$symbolSlug',
-  path: '/symbol/$symbolSlug',
+const SymbolSymbolSlugIndexRoute = SymbolSymbolSlugIndexRouteImport.update({
+  id: '/symbol/$symbolSlug/',
+  path: '/symbol/$symbolSlug/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SymbolSymbolSlugSubmatchRoute =
+  SymbolSymbolSlugSubmatchRouteImport.update({
+    id: '/symbol/$symbolSlug/submatch',
+    path: '/symbol/$symbolSlug/submatch',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
-  '/symbol/$symbolSlug': typeof SymbolSymbolSlugRoute
   '/symbol': typeof SymbolIndexRoute
+  '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
+  '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
-  '/symbol/$symbolSlug': typeof SymbolSymbolSlugRoute
   '/symbol': typeof SymbolIndexRoute
+  '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
+  '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
-  '/symbol/$symbolSlug': typeof SymbolSymbolSlugRoute
   '/symbol/': typeof SymbolIndexRoute
+  '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
+  '/symbol/$symbolSlug/': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/admin' | '/symbol/$symbolSlug' | '/symbol'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/symbol'
+    | '/symbol/$symbolSlug/submatch'
+    | '/symbol/$symbolSlug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/symbol/$symbolSlug' | '/symbol'
-  id: '__root__' | '/' | '/admin' | '/symbol/$symbolSlug' | '/symbol/'
+  to:
+    | '/'
+    | '/admin'
+    | '/symbol'
+    | '/symbol/$symbolSlug/submatch'
+    | '/symbol/$symbolSlug'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/symbol/'
+    | '/symbol/$symbolSlug/submatch'
+    | '/symbol/$symbolSlug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
-  SymbolSymbolSlugRoute: typeof SymbolSymbolSlugRoute
   SymbolIndexRoute: typeof SymbolIndexRoute
+  SymbolSymbolSlugSubmatchRoute: typeof SymbolSymbolSlugSubmatchRoute
+  SymbolSymbolSlugIndexRoute: typeof SymbolSymbolSlugIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -92,11 +119,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SymbolIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/symbol/$symbolSlug': {
-      id: '/symbol/$symbolSlug'
+    '/symbol/$symbolSlug/': {
+      id: '/symbol/$symbolSlug/'
       path: '/symbol/$symbolSlug'
       fullPath: '/symbol/$symbolSlug'
-      preLoaderRoute: typeof SymbolSymbolSlugRouteImport
+      preLoaderRoute: typeof SymbolSymbolSlugIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/symbol/$symbolSlug/submatch': {
+      id: '/symbol/$symbolSlug/submatch'
+      path: '/symbol/$symbolSlug/submatch'
+      fullPath: '/symbol/$symbolSlug/submatch'
+      preLoaderRoute: typeof SymbolSymbolSlugSubmatchRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -105,8 +139,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
-  SymbolSymbolSlugRoute: SymbolSymbolSlugRoute,
   SymbolIndexRoute: SymbolIndexRoute,
+  SymbolSymbolSlugSubmatchRoute: SymbolSymbolSlugSubmatchRoute,
+  SymbolSymbolSlugIndexRoute: SymbolSymbolSlugIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,10 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import React from 'react';
-import {
-  fetchSymbolSubmatches,
-  type SymbolMetadata,
-  type SymbolSubmatchResult,
-} from '../api/symbols.tsx';
+import type { SymbolMetadata, SymbolSubmatchResult } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
 
 function SubmatchCard({
@@ -142,84 +136,18 @@ function SubmatchCard({
   );
 }
 
-function resultsHasMore(total: number, pageNum: number, pageSize: number) {
-  const start = pageNum * pageSize;
-  const end = start + pageSize;
-  return total > end;
-}
-
 export function SymbolSubmatches({
-  slug,
   querySym,
+  submatches,
 }: {
-  slug: string;
   querySym: SymbolMetadata;
+  submatches: SymbolSubmatchResult[];
 }) {
-  const [pageNum, setPageNum] = React.useState(0);
-
-  React.useEffect(() => {
-    setPageNum(0);
-  }, [slug]);
-
-  const pageSize = 10;
-  const windowSize = 10;
-
-  const {
-    data: submatchResults,
-    isLoading,
-    isError,
-    error,
-    isFetching,
-    isPlaceholderData,
-  } = useQuery({
-    queryKey: ['match', slug, pageNum, pageSize],
-    queryFn: () => fetchSymbolSubmatches(slug, pageNum, pageSize, windowSize),
-    placeholderData: keepPreviousData,
-  });
-
-  if (isLoading) return <div>Loading submatch results...</div>;
-  if (isError)
-    return <div style={{ color: 'red' }}>{(error as Error).message}</div>;
-  if (!submatchResults)
-    return (
-      <div style={{ color: 'red' }}>Match results could not be loaded</div>
-    );
-
   // Sort submatches by length in descending order
-  const sortedSubmatches = [...submatchResults.submatches].sort(
-    (a, b) => b.len - a.len,
-  );
+  const sortedSubmatches = submatches.sort((a, b) => b.len - a.len);
 
   return (
-    <div className="content">
-      <h3>Submatches ({submatchResults.total_count})</h3>
-      <button
-        type="button"
-        onClick={() => setPageNum((old) => Math.max(old - 1, 0))}
-        disabled={pageNum === 0}
-      >
-        Previous Page
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (
-            !isPlaceholderData &&
-            resultsHasMore(submatchResults?.total_count, pageNum, pageSize)
-          ) {
-            setPageNum((old) => old + 1);
-          }
-        }}
-        // Disable the Next Page button until we know a next page is available
-        disabled={
-          isPlaceholderData ||
-          !resultsHasMore(submatchResults?.total_count, pageNum, pageSize)
-        }
-      >
-        Next Page
-      </button>
-      {pageNum + 1} / {Math.floor(submatchResults.total_count / pageSize) + 1}
-      {isFetching ? <span> Loading...</span> : null}
+    <>
       {sortedSubmatches.length === 0 ? (
         <p>No submatches found.</p>
       ) : (
@@ -235,6 +163,6 @@ export function SymbolSubmatches({
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }

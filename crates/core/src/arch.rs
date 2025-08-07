@@ -115,7 +115,12 @@ pub(crate) fn get_equivalence_hash(
                                         vo.hash(&mut hasher);
                                     }
                                 }
-                                ValuedOperand::core_immediate(_) => {
+                                ValuedOperand::core_imm_i16(_) => {
+                                    if !hashed_reloc {
+                                        vo.hash(&mut hasher);
+                                    }
+                                }
+                                ValuedOperand::core_imm_u16(_) => {
                                     if !hashed_reloc {
                                         vo.hash(&mut hasher);
                                     }
@@ -127,7 +132,7 @@ pub(crate) fn get_equivalence_hash(
                                     );
                                     vo.hash(&mut hasher);
                                 }
-                                ValuedOperand::core_immediate_base(_, gpr) => {
+                                ValuedOperand::core_imm_rs(_, gpr) => {
                                     if !hashed_reloc {
                                         vo.hash(&mut hasher);
                                     } else {

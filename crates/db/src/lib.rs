@@ -299,16 +299,23 @@ pub async fn create_symbol_window_hashes(
     }
     Ok(())
 }
+
+pub struct QueryWindowsRequest {
+    pub symbol_id: i64,
+    pub start: i32,
+    pub end: i32,
+    pub window_size: i64,
+    pub db_window_size: i64,
+    pub limit: i64,
+    pub page: i64,
+}
+
 pub async fn query_windows_by_symbol_id(
     conn: Pool<Postgres>,
-    symbol_id: i64,
-    window_size: i64,
-    db_window_size: i64,
-    limit: i64,
-    page: i64,
+    request: QueryWindowsRequest,
 ) -> Result<DBWindowResults> {
-    let min_seq_len = window_size - db_window_size;
-    let offset = page * limit;
+    let min_seq_len = request.window_size - request.db_window_size;
+    let offset = request.page * request.limit;
 
     let rows = sqlx::query!(
         "
@@ -322,7 +329,7 @@ potential_matches AS (
         (a.pos - b.pos) AS pos_diff
     FROM windows a
     JOIN windows b ON a.hash = b.hash
-    WHERE a.symbol_id = $1 AND a.symbol_id != b.symbol_id
+    WHERE a.pos >= $5 AND a.pos <= $6 AND a.symbol_id = $1 AND a.symbol_id != b.symbol_id
 ),
 sequence_groups AS (
     SELECT
@@ -375,7 +382,7 @@ SELECT *
 FROM joined_sequences
 ORDER BY length DESC, project_id, source_id, symbol_id, start_query_pos, start_match_pos
 LIMIT $3 OFFSET $4
-",symbol_id, min_seq_len, limit, offset
+",request.symbol_id, min_seq_len, request.limit, offset, request.start, request.end
     )
     .fetch_all(&conn)
     .await?;
@@ -385,7 +392,7 @@ LIMIT $3 OFFSET $4
         .map(|row| DBWindow {
             query_start: row.start_query_pos.unwrap(),
             match_start: row.start_match_pos.unwrap(),
-            len: row.length.unwrap() + db_window_size - 1,
+            len: row.length.unwrap() + request.db_window_size - 1,
             symbol_id: row.symbol_id,
             symbol_slug: row.symbol_slug.clone(),
             symbol_name: row.symbol_name.clone(),

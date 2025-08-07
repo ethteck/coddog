@@ -70,6 +70,8 @@ export const fetchSymbolAsm = async (
 
 export const fetchSymbolSubmatches = async (
   symbol_slug: string,
+  start: number,
+  end: number,
   page: number,
   size: number,
   window_size = 8,
@@ -81,6 +83,8 @@ export const fetchSymbolSubmatches = async (
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         window_size: window_size,
+        start: start,
+        end: end,
         page_num: page,
         page_size: size,
       }),

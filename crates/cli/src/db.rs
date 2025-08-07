@@ -4,7 +4,7 @@ use coddog_core::Platform;
 use coddog_core::ingest::read_elf;
 use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
-use coddog_db::{DBSymbol, DBWindow};
+use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest};
 use decomp_settings::read_config;
 use glob::glob;
 use inquire::Select;
@@ -290,11 +290,15 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let before_time = SystemTime::now();
             let matching_hashes = coddog_db::query_windows_by_symbol_id(
                 pool.clone(),
-                symbol.id,
-                *window_size as i64,
-                db_window_size as i64,
-                100,
-                0,
+                QueryWindowsRequest {
+                    symbol_id: symbol.id,
+                    start: 0,
+                    end: symbol.get_num_insns(),
+                    window_size: *window_size as i64,
+                    db_window_size: db_window_size as i64,
+                    limit: 100,
+                    page: 0,
+                },
             )
             .await?;
 

@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_validated_extractors::ValidatedJson;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
-use coddog_db::{DBSymbol, SubmatchResult, SymbolMetadata};
+use coddog_db::{DBSymbol, QueryWindowsRequest, SubmatchResult, SymbolMetadata};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -274,17 +274,20 @@ async fn get_symbol_submatches(
             )
         })?;
 
-    // let start = req.start.unwrap_or(0);
-    // let end = req.end.unwrap_or(query_sym.get_num_insns().into());
-    // TODO use these
+    let start = req.start.unwrap_or(0) as i32;
+    let end = req.end.unwrap_or(query_sym.get_num_insns().into()) as i32;
 
     let windows_results = coddog_db::query_windows_by_symbol_id(
         pg_pool.clone(),
-        query_sym.id,
-        req.window_size,
-        db_window_size,
-        req.page_size,
-        req.page_num,
+        QueryWindowsRequest {
+            symbol_id: query_sym.id,
+            start,
+            end,
+            window_size: req.window_size,
+            db_window_size,
+            limit: req.page_size,
+            page: req.page_num,
+        },
     )
     .await
     .map_err(|e| {
