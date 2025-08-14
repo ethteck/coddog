@@ -3,7 +3,7 @@ pub mod symbols;
 
 use anyhow::Result;
 use coddog_core::Platform;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
@@ -44,6 +44,7 @@ pub struct DBSymbol {
     pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
+    pub project_repo: Option<String>,
     pub platform: i32,
 }
 
@@ -74,6 +75,7 @@ pub struct SymbolMetadata {
     pub version_name: Option<String>,
     pub project_id: i64,
     pub project_name: String,
+    pub project_repo: Option<String>,
     pub platform: i32,
 }
 
@@ -89,6 +91,7 @@ impl SymbolMetadata {
             version_name: symbol.version_name.clone(),
             project_id: symbol.project_id,
             project_name: symbol.project_name.clone(),
+            project_repo: symbol.project_repo.clone(),
             platform: symbol.platform,
         }
     }
@@ -112,6 +115,7 @@ pub struct DBWindow {
     pub object_path: String,
     pub project_id: i64,
     pub project_name: String,
+    pub project_repo: Option<String>,
     pub platform: i32,
 }
 
@@ -143,6 +147,7 @@ impl SubmatchResult {
                 version_name: window.version_name.clone(),
                 project_id: window.project_id,
                 project_name: window.project_name.clone(),
+                project_repo: window.project_repo.clone(),
                 platform: window.platform,
             },
             query_start: window.query_start as i64,
@@ -300,6 +305,20 @@ pub async fn create_symbol_window_hashes(
     Ok(())
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmatchResultOrder {
+    Length,
+    QueryStart,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortDirection {
+    Asc,
+    Desc,
+}
+
 pub struct QueryWindowsRequest {
     pub symbol_id: i64,
     pub start: i32,
@@ -308,6 +327,8 @@ pub struct QueryWindowsRequest {
     pub db_window_size: i64,
     pub limit: i64,
     pub page: i64,
+    pub sort_by: SubmatchResultOrder,
+    pub sort_direction: SortDirection,
 }
 
 pub async fn query_windows_by_symbol_id(
@@ -316,6 +337,16 @@ pub async fn query_windows_by_symbol_id(
 ) -> Result<DBWindowResults> {
     let min_seq_len = request.window_size - request.db_window_size;
     let offset = request.page * request.limit;
+
+    let _sort_by = match request.sort_by {
+        SubmatchResultOrder::Length => "length",
+        SubmatchResultOrder::QueryStart => "start_query_pos",
+    };
+
+    let _sort_dir = match request.sort_direction {
+        SortDirection::Asc => "ASC",
+        SortDirection::Desc => "DESC",
+    };
 
     let rows = sqlx::query!(
         "
@@ -365,6 +396,7 @@ joined_sequences AS (
         versions.id AS \"version_id?\",
         versions.name AS \"version_name?\",
         projects.platform,
+        projects.repo AS project_repo,
         objects.id AS object_id,
         objects.local_path AS object_path,
         fs.start_query_pos,
@@ -406,6 +438,7 @@ LIMIT $3 OFFSET $4
             version_name: row.version_name.clone(),
             project_id: row.project_id,
             project_name: row.project_name.clone(),
+            project_repo: row.project_repo.clone(),
             platform: row.platform,
         })
         .collect();

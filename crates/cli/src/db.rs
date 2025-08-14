@@ -4,7 +4,7 @@ use coddog_core::Platform;
 use coddog_core::ingest::read_elf;
 use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
-use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest};
+use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest, SortDirection, SubmatchResultOrder};
 use decomp_settings::read_config;
 use glob::glob;
 use inquire::Select;
@@ -298,6 +298,8 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                     db_window_size: db_window_size as i64,
                     limit: 100,
                     page: 0,
+                    sort_by: SubmatchResultOrder::Length,
+                    sort_direction: SortDirection::Desc,
                 },
             )
             .await?;

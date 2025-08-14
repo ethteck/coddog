@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { fetchSymbolAsm, fetchSymbolMetadata } from '../../../api/symbols.tsx';
 import { SymbolLabel } from '../../../components/SymbolLabel.tsx';
 import { SymbolMatches } from '../../../components/SymbolMatches.tsx';
@@ -66,7 +66,15 @@ function SymbolInfo() {
         <SymbolLabel symbol={querySymbol} link={false} />
       </h2>
 
+      {querySymbol.project_repo && (
+        <Link to={querySymbol.project_repo}>Repo</Link>
+      )}
+
       <SymbolMatches slug={symbolSlug} />
+
+      <Link to={`/symbol/${symbolSlug}/submatch`} className="button">
+        Search submatches
+      </Link>
     </>
   );
 }

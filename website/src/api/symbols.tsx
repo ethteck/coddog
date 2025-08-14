@@ -8,6 +8,7 @@ export type SymbolMetadata = {
   version_name?: string;
   project_id: number;
   project_name: string;
+  project_repo?: string;
   platform: number;
 };
 
@@ -75,6 +76,8 @@ export const fetchSymbolSubmatches = async (
   page: number,
   size: number,
   window_size = 8,
+  sort_by = 'length',
+  sort_dir = 'desc',
 ): Promise<SymbolSubmatchResults> => {
   const res = await fetch(
     `http://localhost:3000/symbols/${symbol_slug}/submatch`,
@@ -87,6 +90,8 @@ export const fetchSymbolSubmatches = async (
         end: end,
         page_num: page,
         page_size: size,
+        sort_by: sort_by,
+        sort_dir: sort_dir,
       }),
     },
   );

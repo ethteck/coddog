@@ -11,7 +11,7 @@ impl Cluster<'_> {
     }
 }
 
-pub fn get_clusters(symbols: &[Symbol], threshold: f32, min_len: usize) -> Vec<Cluster> {
+pub fn get_clusters(symbols: &[Symbol], threshold: f32, min_len: usize) -> Vec<Cluster<'_>> {
     let mut clusters: Vec<Cluster> = Vec::new();
 
     symbols

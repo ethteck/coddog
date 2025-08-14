@@ -1,15 +1,15 @@
 import type React from 'react';
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface SelectedRange {
-  start: number | null;
-  end: number | null;
+  start: number;
+  end: number;
 }
 
 interface AssemblyViewerProps {
   asm: string[];
-  selectedRange: SelectedRange;
-  setSelectedRange: React.Dispatch<React.SetStateAction<SelectedRange>>;
+  selectedRange: SelectedRange | null;
+  setSelectedRange: (range: SelectedRange | null) => void;
 }
 
 export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
@@ -17,50 +17,72 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
   selectedRange,
   setSelectedRange,
 }) => {
+  // Internal state for tracking incomplete selections
+  const [internalSelection, setInternalSelection] = useState<{
+    start: number | null;
+    end: number | null;
+  }>({
+    start: null,
+    end: null,
+  });
   const [isSelecting, setIsSelecting] = useState(false);
   const [startLineInput, setStartLineInput] = useState<string>('');
   const [endLineInput, setEndLineInput] = useState<string>('');
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  // Sync input fields with selected range
+  // Sync input fields with selected range or internal selection
   useEffect(() => {
-    setStartLineInput(
-      selectedRange.start !== null ? (selectedRange.start + 1).toString() : '',
-    );
-    setEndLineInput(
-      selectedRange.end !== null ? (selectedRange.end + 1).toString() : '',
-    );
-  }, [selectedRange]);
+    if (selectedRange) {
+      setStartLineInput((selectedRange.start + 1).toString());
+      setEndLineInput((selectedRange.end + 1).toString());
+      setInternalSelection({
+        start: selectedRange.start,
+        end: selectedRange.end,
+      });
+    } else {
+      setStartLineInput(
+        internalSelection.start !== null
+          ? (internalSelection.start + 1).toString()
+          : '',
+      );
+      setEndLineInput(
+        internalSelection.end !== null
+          ? (internalSelection.end + 1).toString()
+          : '',
+      );
+    }
+  }, [selectedRange, internalSelection]);
 
   const handleRowClick = useCallback(
     (index: number) => {
-      if (selectedRange.start === null) {
+      if (internalSelection.start === null) {
         // First click - set start
-        setSelectedRange({ start: index, end: null });
+        setInternalSelection({ start: index, end: null });
         setIsSelecting(true);
-      } else if (selectedRange.end === null && isSelecting) {
-        // Second click - set end
-        const start = selectedRange.start;
+      } else if (internalSelection.end === null && isSelecting) {
+        // Second click - set end and commit the selection
+        const start = internalSelection.start;
         const end = index;
-        setSelectedRange({
+        const finalRange = {
           start: Math.min(start, end),
           end: Math.max(start, end),
-        });
+        };
+        setInternalSelection(finalRange);
+        setSelectedRange(finalRange);
         setIsSelecting(false);
       } else {
         // Reset selection
-        setSelectedRange({ start: index, end: null });
+        setInternalSelection({ start: index, end: null });
+        setSelectedRange(null);
         setIsSelecting(true);
       }
     },
-    [
-      selectedRange,
-      isSelecting, // Reset selection
-      setSelectedRange,
-    ],
+    [internalSelection, isSelecting, setSelectedRange],
   );
 
   const clearSelection = useCallback(() => {
-    setSelectedRange({ start: null, end: null });
+    setInternalSelection({ start: null, end: null });
+    setSelectedRange(null);
     setIsSelecting(false);
   }, [setSelectedRange]);
 
@@ -69,27 +91,33 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
       // Only allow digits
       const sanitizedValue = value.replace(/[^0-9]/g, '');
 
-      // Prevent entering 0 or values starting with 0
-      if (sanitizedValue.startsWith('0')) {
-        return;
-      }
-
       setStartLineInput(sanitizedValue);
 
       const lineNum = Number.parseInt(sanitizedValue, 10);
       if (!Number.isNaN(lineNum) && lineNum >= 1) {
+        const newStart = lineNum > asm.length ? asm.length - 1 : lineNum - 1;
         if (lineNum > asm.length) {
-          // Reset to max value if beyond bounds
           setStartLineInput(asm.length.toString());
-          setSelectedRange((prev) => ({ ...prev, start: asm.length - 1 }));
+        }
+
+        const newInternalSelection = { ...internalSelection, start: newStart };
+        setInternalSelection(newInternalSelection);
+
+        // If both start and end are set, commit the selection
+        if (newInternalSelection.end !== null) {
+          setSelectedRange({
+            start: Math.min(newStart, newInternalSelection.end),
+            end: Math.max(newStart, newInternalSelection.end),
+          });
         } else {
-          setSelectedRange((prev) => ({ ...prev, start: lineNum - 1 }));
+          setSelectedRange(null);
         }
       } else if (sanitizedValue === '') {
-        setSelectedRange((prev) => ({ ...prev, start: null }));
+        setInternalSelection({ ...internalSelection, start: null });
+        setSelectedRange(null);
       }
     },
-    [asm.length, setSelectedRange],
+    [asm.length, internalSelection, setSelectedRange],
   );
 
   const handleEndLineChange = useCallback(
@@ -106,36 +134,62 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
 
       const lineNum = Number.parseInt(sanitizedValue, 10);
       if (!Number.isNaN(lineNum) && lineNum >= 1) {
+        const newEnd = lineNum > asm.length ? asm.length - 1 : lineNum - 1;
         if (lineNum > asm.length) {
-          // Reset to max value if beyond bounds
           setEndLineInput(asm.length.toString());
-          setSelectedRange((prev) => ({ ...prev, end: asm.length - 1 }));
+        }
+
+        const newInternalSelection = { ...internalSelection, end: newEnd };
+        setInternalSelection(newInternalSelection);
+
+        // If both start and end are set, commit the selection
+        if (newInternalSelection.start !== null) {
+          setSelectedRange({
+            start: Math.min(newInternalSelection.start, newEnd),
+            end: Math.max(newInternalSelection.start, newEnd),
+          });
         } else {
-          setSelectedRange((prev) => ({ ...prev, end: lineNum - 1 }));
+          setSelectedRange(null);
         }
       } else if (sanitizedValue === '') {
-        setSelectedRange((prev) => ({ ...prev, end: null }));
+        setInternalSelection({ ...internalSelection, end: null });
+        setSelectedRange(null);
       }
     },
-    [asm.length, setSelectedRange],
+    [asm.length, internalSelection, setSelectedRange],
   );
 
   const isRowInRange = useCallback(
     (index: number) => {
-      const start = selectedRange.start ?? 0;
-      const end = selectedRange.end ?? asm.length - 1;
+      // Use selectedRange if available, otherwise use internal selection for visual feedback
+      const range = selectedRange || internalSelection;
 
-      if (selectedRange.start === null && selectedRange.end === null)
-        return false;
+      if (!range || (range.start === null && range.end === null)) return false;
 
-      return index >= start && index <= end;
+      // Handle partial selection (only start is set)
+      if (range.start !== null && range.end === null) {
+        return index === range.start;
+      }
+
+      // Handle complete selection
+      if (range.start !== null && range.end !== null) {
+        const start = Math.min(range.start, range.end);
+        const end = Math.max(range.start, range.end);
+        return index >= start && index <= end;
+      }
+
+      return false;
     },
-    [selectedRange, asm.length],
+    [selectedRange, internalSelection],
   );
+
+  const toggleExpanded = useCallback(() => {
+    setIsExpanded((prev) => !prev);
+  }, []);
 
   return (
     <>
-      <h3>Assembly Code</h3>
+      <h3>Search range:</h3>
       <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>
         <div
           style={{
@@ -186,81 +240,110 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
             type="button"
             onClick={clearSelection}
             disabled={
-              selectedRange.start === null && selectedRange.end === null
+              selectedRange === null &&
+              internalSelection.start === null &&
+              internalSelection.end === null
             }
           >
-            Clear Selection
+            Reset selection
           </button>
         </div>
-
-        <div
+        <button
+          type="button"
+          onClick={toggleExpanded}
           style={{
-            border: '1px solid #ccc',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '4px 8px',
             borderRadius: '4px',
-            maxHeight: '500px',
-            overflowY: 'auto',
-            backgroundColor: '#640d0dff',
+            cursor: 'pointer',
           }}
         >
-          {asm.map((line, index) => (
-            // biome-ignore lint/a11y/useKeyWithClickEvents: <explanation>
-            // biome-ignore lint/a11y/useSemanticElements: <explanation>
-            <div
-              role="button"
-              tabIndex={index}
-              key={index + line}
-              onClick={() => handleRowClick(index)}
-              style={{
-                padding: '4px 8px',
-                borderBottom:
-                  index < asm.length - 1 ? '1px solid #eee' : 'none',
-                cursor: 'pointer',
-                backgroundColor: isRowInRange(index)
-                  ? '#bc8334ff'
-                  : 'transparent',
-                display: 'flex',
-                alignItems: 'center',
-              }}
-              onMouseEnter={(e) => {
-                if (!isRowInRange(index)) {
-                  e.currentTarget.style.backgroundColor = '#640d0dff';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isRowInRange(index)) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }
-              }}
-            >
-              <span
+          <span
+            style={{
+              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+              fontSize: '12px',
+            }}
+          >
+            ▶
+          </span>
+          {isExpanded ? 'Collapse' : 'Show asm'}
+        </button>
+        {isExpanded && (
+          <div
+            style={{
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              maxHeight: '500px',
+              overflowY: 'auto',
+              backgroundColor: '#640d0dff',
+            }}
+          >
+            {asm.map((line, index) => (
+              // biome-ignore lint/a11y/useKeyWithClickEvents: div used for interactive row selection
+              // biome-ignore lint/a11y/useSemanticElements: div with role button is appropriate here
+              <div
+                role="button"
+                tabIndex={index}
+                key={index + line}
+                onClick={() => handleRowClick(index)}
                 style={{
-                  minWidth: '40px',
-                  color: '#666',
-                  marginRight: '10px',
-                  textAlign: 'right',
-                  userSelect: 'none',
+                  padding: '4px 8px',
+                  borderBottom:
+                    index < asm.length - 1 ? '1px solid #eee' : 'none',
+                  cursor: 'pointer',
+                  backgroundColor: isRowInRange(index)
+                    ? '#bc8334ff'
+                    : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isRowInRange(index)) {
+                    e.currentTarget.style.backgroundColor = '#640d0dff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isRowInRange(index)) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
                 }}
               >
-                {index + 1}
-              </span>
-              <span
-                style={{
-                  minWidth: '40px',
-                  color: '#666',
-                  marginRight: '10px',
-                  textAlign: 'right',
-                  userSelect: 'none',
-                }}
-              >
-                0x
-                {(index * 4)
-                  .toString(16)
-                  .padStart(Math.floor(Math.log2(asm.length + 1) / 4) + 2, '0')}
-              </span>
-              <span style={{ userSelect: 'none' }}>{line}</span>
-            </div>
-          ))}
-        </div>
+                <span
+                  style={{
+                    minWidth: '40px',
+                    color: '#666',
+                    marginRight: '10px',
+                    textAlign: 'right',
+                    userSelect: 'none',
+                  }}
+                >
+                  {index + 1}
+                </span>
+                <span
+                  style={{
+                    minWidth: '40px',
+                    color: '#666',
+                    marginRight: '10px',
+                    textAlign: 'right',
+                    userSelect: 'none',
+                  }}
+                >
+                  0x
+                  {(index * 4)
+                    .toString(16)
+                    .padStart(
+                      Math.floor(Math.log2(asm.length + 1) / 4) + 2,
+                      '0',
+                    )}
+                </span>
+                <span style={{ userSelect: 'none' }}>{line}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

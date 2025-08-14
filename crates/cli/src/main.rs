@@ -565,16 +565,16 @@ async fn main() -> Result<()> {
 
             let opcodes = core::arch::get_opcodes(&query_bin_data, platform);
             for (i, hash) in core::get_hashes(&opcodes, window_size).iter().enumerate() {
-                if let Some((project_name, version_name, symbol)) = symbol_hashes.get(hash) {
-                    if opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes {
-                        println!(
-                            "0x{:X} - {} {}: {}",
-                            i * platform.arch().insn_length(),
-                            project_name.color(BINARY_COLORS[0]),
-                            version_name.color(BINARY_COLORS[0]),
-                            cli_fullname(symbol)
-                        );
-                    }
+                if let Some((project_name, version_name, symbol)) = symbol_hashes.get(hash)
+                    && opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes
+                {
+                    println!(
+                        "0x{:X} - {} {}: {}",
+                        i * platform.arch().insn_length(),
+                        project_name.color(BINARY_COLORS[0]),
+                        version_name.color(BINARY_COLORS[0]),
+                        cli_fullname(symbol)
+                    );
                 }
             }
         }

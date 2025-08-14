@@ -7,7 +7,10 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_validated_extractors::ValidatedJson;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
-use coddog_db::{DBSymbol, QueryWindowsRequest, SubmatchResult, SymbolMetadata};
+use coddog_db::{
+    DBSymbol, QueryWindowsRequest, SortDirection, SubmatchResult, SubmatchResultOrder,
+    SymbolMetadata,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::PgPool;
@@ -231,6 +234,10 @@ struct GetSubmatchesRequest {
     pub page_num: i64,
     #[validate(range(min = 1, max = 100))]
     pub page_size: i64,
+    #[validate(custom(function = "validate_sort_by"))]
+    pub sort_by: SubmatchResultOrder,
+    #[validate(custom(function = "validate_sort_dir"))]
+    pub sort_dir: SortDirection,
 }
 
 fn validate_window_size(input: i64) -> Result<(), ValidationError> {
@@ -246,6 +253,18 @@ fn validate_window_size(input: i64) -> Result<(), ValidationError> {
     }
 
     Ok(())
+}
+
+fn validate_sort_by(input: &SubmatchResultOrder) -> Result<(), ValidationError> {
+    match input {
+        SubmatchResultOrder::Length | SubmatchResultOrder::QueryStart => Ok(()),
+    }
+}
+
+fn validate_sort_dir(input: &SortDirection) -> Result<(), ValidationError> {
+    match input {
+        SortDirection::Asc | SortDirection::Desc => Ok(()),
+    }
 }
 
 async fn get_symbol_submatches(
@@ -287,6 +306,8 @@ async fn get_symbol_submatches(
             db_window_size,
             limit: req.page_size,
             page: req.page_num,
+            sort_by: req.sort_by,
+            sort_direction: req.sort_dir,
         },
     )
     .await
