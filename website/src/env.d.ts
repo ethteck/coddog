@@ -5,3 +5,8 @@ declare namespace NodeJS {
     GIT_HASH: string;
   }
 }
+
+declare module "*.svg" {
+  const content: string;
+  export default content;
+}
