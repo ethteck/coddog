@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n           symbols.symbol_idx,\n            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id AS project_id, projects.platform\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN objects ON objects.id = sources.object_id\n    LEFT JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.id = $1",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id AS project_id, projects.platform,\n           projects.repo AS project_repo\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN objects ON objects.id = sources.object_id\n    LEFT JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
   "describe": {
     "columns": [
       {
@@ -30,28 +30,28 @@
       },
       {
         "ordinal": 5,
+        "name": "symbol_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
         "name": "opcode_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "equiv_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "exact_hash",
         "type_info": "Int8"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "source_id",
         "type_info": "Int8"
-      },
-      {
-        "ordinal": 9,
-        "name": "symbol_idx",
-        "type_info": "Int4"
       },
       {
         "ordinal": 10,
@@ -92,11 +92,16 @@
         "ordinal": 17,
         "name": "platform",
         "type_info": "Int4"
+      },
+      {
+        "ordinal": 18,
+        "name": "project_repo",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -117,8 +122,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "83dd9397d5a0fc25e346832364af13ece32860a5e6fcd8458df69895725ec8f0"
+  "hash": "33694d3c4096af849e619bc111ec44abeda2fad1cd7573a238243af964e780a0"
 }
