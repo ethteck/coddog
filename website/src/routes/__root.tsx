@@ -32,7 +32,7 @@ export const Route = createRootRoute({
         <Outlet />
       </div>
       <div className="footer" style={{ display: 'flex', alignItems: 'center' }}>
-        <a 
+        <a
           href={`https://github.com/ethteck/coddog/commit/${process.env.GIT_HASH || 'unknown'}`}
           target="_blank"
           rel="noopener noreferrer"

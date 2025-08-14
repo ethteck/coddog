@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkcoddog=self.webpackChunkcoddog||[]).push([["269"],{4466:function(n,c,e){e.r(c),e.d(c,{component:()=>d});var o=e(7031);let d=function(){return(0,o.jsx)("div",{children:(0,o.jsx)("p",{children:"yo"})})}}}]);

@@ -21,8 +21,8 @@
     "@tanstack/zod-adapter": "^1.131.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "slider": "link:@base-ui-components/react/slider",
-    "zod": "^4.0.17"
+    "slider": "^1.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@biomejs/biome": "2.1.4",
