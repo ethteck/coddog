@@ -8,7 +8,7 @@ import TanStackRouterRspack from '@tanstack/router-plugin/rspack';
 // Get the current git hash at build time
 const getGitHash = () => {
   try {
-    return execSync('git rev-parse HEAD').toString().trim();
+    return execSync('git rev-parse --short HEAD').toString().trim();
   } catch (error) {
     console.warn('Could not get git hash:', error);
     return 'unknown';

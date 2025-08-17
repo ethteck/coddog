@@ -2,14 +2,14 @@ import { useDebouncedState } from '@tanstack/react-pacer';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import React, { useId, useState } from 'react';
-import { fetchSymbolsByName } from '../../api/symbols.tsx';
-import { SymbolLabel } from '../../components/SymbolLabel.tsx';
+import { fetchSymbolsByName } from '../api/symbols.tsx';
+import { SymbolLabel } from '../components/SymbolLabel.tsx';
 
 type SymbolSearch = {
   name: string;
 };
 
-export const Route = createFileRoute('/symbol/')({
+export const Route = createFileRoute('/search')({
   component: SymbolSearch,
   validateSearch: (search: Record<string, unknown>): SymbolSearch => {
     return {

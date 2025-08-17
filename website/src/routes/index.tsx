@@ -4,8 +4,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import type React from 'react';
 import { useId, useState } from 'react';
 import { fetchSymbolsByName } from '../api/symbols.tsx';
-import { SymbolLabel } from '../components/SymbolLabel.tsx';
 import logoSvg from '../assets/coddoglogo.svg';
+import { SymbolLabel } from '../components/SymbolLabel.tsx';
 
 export const Route = createFileRoute('/')({
   component: Home,
@@ -101,19 +101,6 @@ function Home() {
               </div>
             )}
           </div>
-        </div>
-      </section>
-
-      {/* About */}
-      <section className="about-section">
-        <div className="about">
-          <h2>A new tool for matching decompilation</h2>
-          <p>
-            When decompiling binaries, you often encounter similar or identical
-            functions across different projects. Sometimes you can only match{' '}
-            <em>parts</em> of functions, making it hard to identify library code
-            or find patterns.
-          </p>
         </div>
       </section>
     </div>
