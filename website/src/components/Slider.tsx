@@ -1,19 +1,28 @@
 import { Slider as BaseSlider } from '@base-ui-components/react/slider';
+import React from 'react';
 import styles from './Slider.module.css';
 
 interface SliderProps {
   min: number;
   max: number;
-  value: number;
+  defaultValue: number;
   onChange?: (value: number) => void;
 }
 
-export default function Slider({ min, max, value, onChange }: SliderProps) {
+export default function Slider({
+  min,
+  max,
+  defaultValue,
+  onChange,
+}: SliderProps) {
+  const [value, setValue] = React.useState(defaultValue);
+
   return (
     <BaseSlider.Root
       min={min}
       max={max}
       value={value}
+      onValueChange={setValue}
       onValueCommitted={onChange}
       className={styles.Root}
     >

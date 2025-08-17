@@ -191,7 +191,7 @@ function SymbolSubmatch() {
             <Slider
               min={MIN_WINDOW_SIZE}
               max={50}
-              value={search.windowSize ?? DEFAULT_WINDOW_SIZE}
+              defaultValue={search.windowSize ?? DEFAULT_WINDOW_SIZE}
               onChange={handleWindowSizeChange}
             />
           </div>
