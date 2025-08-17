@@ -76,6 +76,10 @@
     --color-gray-900: oklch(95% 2% 264deg / 90%);
     --color-gray-950: oklch(94% 1.5% 264deg / 95%);
   }
+
+  color-scheme: light dark;
+
+  overflow-y: overlay;
 }
 
 /* ===========================================
@@ -125,18 +129,20 @@ button,
   background: var(--color-primary);
   color: var(--color-text-on-primary);
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-family: inherit;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-normal);
-  margin: var(--spacing-sm) var(--spacing-xs);
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-decoration: none;
   text-align: center;
   line-height: 1.4;
+  min-height: 36px;
 }
 
 button:hover,
@@ -154,10 +160,10 @@ button:active,
 
 button:disabled,
 .button:disabled {
-  background: var(--color-text-muted);
-  color: #ccc;
+  background: var(--color-gray-600);
+  color: var(--color-gray-300);
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.6;
   transform: none;
 }
 
@@ -165,6 +171,26 @@ button:disabled:hover,
 .button:disabled:hover {
   transform: none;
   box-shadow: none;
+  background: var(--color-gray-600);
+}
+
+/* Button variants */
+.button-secondary {
+  background: var(--color-background-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.button-secondary:hover {
+  background: var(--color-background-card);
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.button-small {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.75rem;
+  min-height: 28px;
 }
 
 /* ===========================================
@@ -207,6 +233,16 @@ a:hover {
 /* ===========================================
    LAYOUT COMPONENTS
 =========================================== */
+
+.page-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+}
 
 .header {
   background: var(--color-background-card);
@@ -267,8 +303,7 @@ a:hover {
 
 .hero {
   text-align: center;
-  margin-bottom: var(--spacing-2xl);
-  padding: var(--spacing-xl) 0;
+  padding: var(--spacing-xl) 0 0 0;
 }
 
 .hero-logo {
@@ -381,6 +416,7 @@ a:hover {
   color: inherit;
   font-family: inherit;
   font-size: inherit;
+  display: block;
 }
 
 .symbol-button:hover {
@@ -422,6 +458,88 @@ a:hover {
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-xl);
   margin: var(--spacing-2xl) 0;
+}
+
+/* ===========================================
+   UTILITY CLASSES
+=========================================== */
+
+/* Error states */
+.error {
+  color: var(--color-accent);
+  padding: var(--spacing-md);
+  background: var(--color-background-elevated);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-md) 0;
+  font-weight: 500;
+}
+
+/* Loading states */
+.loading {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--spacing-lg);
+  font-style: italic;
+}
+
+/* Layout utilities */
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.gap-sm {
+  gap: var(--spacing-sm);
+}
+
+.gap-md {
+  gap: var(--spacing-md);
+}
+
+.gap-lg {
+  gap: var(--spacing-lg);
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.text-primary {
+  color: var(--color-primary);
+}
+
+.font-mono {
+  font-family:
+    "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas",
+    "Courier New", monospace;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ===========================================

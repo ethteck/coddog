@@ -40,25 +40,19 @@ function SymbolInfo() {
     queryFn: () => fetchSymbolAsm(symbolSlug),
   });
 
-  if (isLoadingMetadata) return <div>Loading query metadata...</div>;
+  if (isLoadingMetadata)
+    return <div className="loading">Loading query metadata...</div>;
   if (isErrorMetadata)
-    return (
-      <div style={{ color: 'red' }}>{(errorMetadata as Error).message}</div>
-    );
+    return <div className="error">{(errorMetadata as Error).message}</div>;
   if (!querySymbol)
-    return (
-      <div style={{ color: 'red' }}>Query symbol data could not be loaded</div>
-    );
+    return <div className="error">Query symbol data could not be loaded</div>;
 
-  if (isLoadingAsm) return <div>Loading query assembly...</div>;
+  if (isLoadingAsm)
+    return <div className="loading">Loading query assembly...</div>;
   if (isErrorAsm)
-    return <div style={{ color: 'red' }}>{(errorAsm as Error).message}</div>;
+    return <div className="error">{(errorAsm as Error).message}</div>;
   if (!queryAsm)
-    return (
-      <div style={{ color: 'red' }}>
-        Query assembly data could not be loaded
-      </div>
-    );
+    return <div className="error">Query assembly data could not be loaded</div>;
 
   return (
     <>
@@ -72,7 +66,11 @@ function SymbolInfo() {
 
       <SymbolMatches slug={symbolSlug} />
 
-      <Link to={`/symbol/${symbolSlug}/submatch`} className="button">
+      <Link
+        to="/symbol/$symbolSlug/submatch"
+        params={{ symbolSlug }}
+        className="button"
+      >
         Search submatches
       </Link>
     </>

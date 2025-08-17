@@ -1,5 +1,6 @@
 import type { SymbolMetadata, SymbolSubmatchResult } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
+import styles from './SymbolSubmatches.module.css';
 
 function SubmatchCard({
   submatch,
@@ -19,101 +20,45 @@ function SubmatchCard({
   return (
     <div
       key={`${submatch.symbol.slug}_${submatch.query_start}_${submatch.match_start}_${submatch.len}`}
-      className="submatch-card"
-      style={{
-        background: '#2c2f33',
-        border: '1px solid #23272a',
-        borderRadius: '6px',
-        padding: '8px 12px',
-        marginBottom: '8px',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-      }}
+      className={styles.submatchCard}
     >
-      <div
-        style={{
-          fontSize: '1rem',
-          fontWeight: 'bold',
-          color: '#ffb347',
-          marginBottom: '4px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
+      <div className={styles.submatchHeader}>
         <SymbolLabel symbol={submatch.symbol} />
-        <span style={{ fontSize: '0.8rem', color: '#aaa' }} />
+        <span className={styles.submatchMeta} />
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '5px' }}>
-          <svg width="30px" height="100px">
+      <div className={styles.submatchContent}>
+        <div className={styles.visualsContainer}>
+          <svg width="30px" height="100px" className={styles.matchVisual}>
             <title>Query Match</title>
-            <rect
-              x="0"
-              y="0"
-              width="100%"
-              height="100%"
-              style={{
-                fill: 'tan',
-                stroke: 'black',
-              }}
-            />
 
             <rect
-              x="5%"
+              x="0%"
               y={`${queryOffsetPercent * 100}%`}
-              width="90%"
+              width="100%"
               height={`${queryHeightPercent * 100}%`}
-              style={{
-                fill: 'saddlebrown',
-              }}
+              className={styles.matchVisualHighlight}
             />
           </svg>
 
-          <svg width="30px" height="100px">
+          <svg width="30px" height="100px" className={styles.matchVisual}>
             <title>Match Match lol</title>
-            <rect
-              x="0"
-              y="0"
-              width="100%"
-              height="100%"
-              style={{
-                fill: 'tan',
-                stroke: 'black',
-              }}
-            />
 
             <rect
-              x="5%"
+              x="0%"
               y={`${matchOffsetPercent * 100}%`}
-              width="90%"
+              width="100%"
               height={`${matchHeightPercent * 100}%`}
-              style={{
-                fill: 'saddlebrown',
-              }}
+              className={styles.matchVisualHighlight}
             />
           </svg>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '70px 1fr',
-            rowGap: '2px',
-            fontSize: '0.9rem',
-            flexGrow: 1,
-          }}
-        >
-          <span>Length:</span>
-          <span>{submatch.len} </span>
-          <span>Query:</span>
-          <span>
+        <div className={styles.matchDetails}>
+          <span className={styles.matchDetailsLabel}>Length:</span>
+          <span className={styles.matchDetailsValue}>{submatch.len}</span>
+          <span className={styles.matchDetailsLabel}>Query:</span>
+          <span className={styles.matchDetailsValue}>
             {submatch.query_start} - {submatch.query_start + submatch.len} (
             {queryHeightPercent.toLocaleString(undefined, {
               style: 'percent',
@@ -121,8 +66,8 @@ function SubmatchCard({
             })}
             )
           </span>
-          <span>Match:</span>
-          <span>
+          <span className={styles.matchDetailsLabel}>Match:</span>
+          <span className={styles.matchDetailsValue}>
             {submatch.match_start} - {submatch.match_start + submatch.len} (
             {matchHeightPercent.toLocaleString(undefined, {
               style: 'percent',
@@ -149,9 +94,9 @@ export function SymbolSubmatches({
   return (
     <>
       {sortedSubmatches.length === 0 ? (
-        <p>No submatches found.</p>
+        <p className={styles.noMatches}>No submatches found.</p>
       ) : (
-        <div className="submatch-list">
+        <div className={styles.submatchList}>
           {sortedSubmatches.map((submatch) => {
             return (
               <SubmatchCard

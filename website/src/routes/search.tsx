@@ -62,10 +62,8 @@ function SymbolSearch() {
         value={query}
         onChange={handleQueryChange}
       />
-      {isLoading && <div>Loading...</div>}
-      {isError && (
-        <div style={{ color: 'red' }}>{(error as Error).message}</div>
-      )}
+      {isLoading && <div className="loading">Loading...</div>}
+      {isError && <div className="error">{(error as Error).message}</div>}
       <ul>
         {symbols?.map((sym) => (
           <li key={sym.slug}>
