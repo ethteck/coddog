@@ -89,7 +89,8 @@
 body {
   background: var(--color-background);
   color: var(--color-text-primary);
-  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", Arial, sans-serif;
+  font-family:
+    "Segoe UI", -apple-system, BlinkMacSystemFont, "Roboto", Arial, sans-serif;
   margin: 0;
   min-height: 100vh;
   line-height: 1.6;
@@ -107,7 +108,9 @@ input {
   padding: var(--spacing-md);
   font-family: inherit;
   font-size: 1rem;
-  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+  transition:
+    border-color var(--transition-normal),
+    box-shadow var(--transition-normal);
 }
 
 input:focus {
@@ -276,7 +279,11 @@ a:hover {
 .hero h1 {
   font-size: 3.5rem;
   margin-bottom: var(--spacing-sm);
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    var(--color-primary-light)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
