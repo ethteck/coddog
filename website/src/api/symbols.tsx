@@ -75,7 +75,7 @@ export const fetchSymbolSubmatches = async (
   end: number,
   page: number,
   size: number,
-  window_size = 8,
+  window_size: number,
   sort_by = 'length',
   sort_dir = 'desc',
 ): Promise<SymbolSubmatchResults> => {

@@ -424,7 +424,7 @@ LIMIT $3 OFFSET $4
         .map(|row| DBWindow {
             query_start: row.start_query_pos.unwrap(),
             match_start: row.start_match_pos.unwrap(),
-            len: row.length.unwrap() + request.db_window_size - 1,
+            len: row.length.unwrap() + request.db_window_size,
             symbol_id: row.symbol_id,
             symbol_slug: row.symbol_slug.clone(),
             symbol_name: row.symbol_name.clone(),

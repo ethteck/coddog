@@ -264,7 +264,6 @@ a:hover {
   padding: var(--spacing-sm);
   position: relative;
   bottom: 0;
-  display: flex;
   align-items: center;
   justify-content: center;
 }
@@ -272,6 +271,11 @@ a:hover {
 .footer p {
   color: var(--color-text-muted);
   margin: 0 0 3px 0;
+}
+
+.footer-link {
+  display: inline-block;
+  vertical-align: sub;
 }
 
 .footer-logo {
