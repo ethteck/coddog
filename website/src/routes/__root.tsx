@@ -17,34 +17,31 @@ export const Route = createRootRoute({
         </Link>{' '}
         <div className="topnav">
           <Link
-            to="/symbol"
+            to="/search"
             search={{ name: '' }}
             className="[&.active]:font-bold"
           >
-            Symbol
+            Search
           </Link>{' '}
-          <Link to="/admin" className="[&.active]:font-bold">
-            Admin
+          <Link to="/about" className="[&.active]:font-bold">
+            About
           </Link>{' '}
         </div>
       </div>
       <div className="content">
         <Outlet />
       </div>
-      <div className="footer" style={{ display: 'flex', alignItems: 'center' }}>
+      <div className="footer">
         <a
           href={`https://github.com/ethteck/coddog/commit/${process.env.GIT_HASH}`}
           target="_blank"
           rel="noopener noreferrer"
-          title={`version ${process.env.GIT_HASH}`}
+          title={`Built on commit ${process.env.GIT_HASH}`}
         >
           <img
             src={logo}
             width="60px"
-            style={{
-              filter: 'grayscale(1) contrast(200%) brightness(0.5)',
-              marginRight: '5px',
-            }}
+            className="footer-logo"
             alt="coddog logo mini"
           />
         </a>
