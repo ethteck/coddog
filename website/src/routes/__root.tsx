@@ -10,7 +10,7 @@ export const Route = createRootRoute({
     ],
   }),
   component: () => (
-    <>
+    <div className="page-container">
       <div className="header">
         <Link to="/">
           <img className="logo" src={logo} alt="coddog logo" />
@@ -48,6 +48,6 @@ export const Route = createRootRoute({
         <p>, the dog that sniffs for cod</p>
       </div>
       {/*<TanStackRouterDevtools/>*/}
-    </>
+    </div>
   ),
 });

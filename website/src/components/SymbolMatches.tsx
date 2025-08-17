@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchSymbolMatches } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
+import styles from './SymbolMatches.module.css';
 
 export function SymbolMatches({ slug }: { slug: string }) {
   const {
@@ -13,64 +14,37 @@ export function SymbolMatches({ slug }: { slug: string }) {
     queryFn: () => fetchSymbolMatches(slug),
   });
 
-  if (isLoading) return <div>Loading match results...</div>;
+  if (isLoading)
+    return <div className={styles.loading}>Loading match results...</div>;
   if (isError)
-    return <div style={{ color: 'red' }}>{(error as Error).message}</div>;
+    return <div className={styles.error}>{(error as Error).message}</div>;
   if (!matchResults)
     return (
-      <div style={{ color: 'red' }}>Match results could not be loaded</div>
+      <div className={styles.error}>Match results could not be loaded</div>
     );
 
   return (
-    <>
-      <h3>Full function matches ({matchResults.length})</h3>
-      {matchResults.map((match) => (
-        <div
-          key={`${match.symbol.slug}_${match.subtype}`}
-          className="match-card"
-          style={{
-            background: '#2c2f33',
-            border: '1px solid #23272a',
-            borderRadius: '6px',
-            padding: '8px 12px',
-            marginBottom: '8px',
-            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-          }}
-        >
+    <div className={styles.matchesSection}>
+      <h3 className={styles.matchesTitle}>
+        Full function matches ({matchResults.length})
+      </h3>
+      <div className={styles.matchesList}>
+        {matchResults.map((match) => (
           <div
-            style={{
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              color: '#ffb347',
-              display: 'flex',
-              alignItems: 'center',
-            }}
+            key={`${match.symbol.slug}_${match.subtype}`}
+            className={styles.matchCard}
           >
-            <span
-              style={{
-                backgroundColor:
-                  match.subtype === 'exact'
-                    ? '#4caf50'
-                    : match.subtype === 'equivalent'
-                      ? '#ff9800'
-                      : '#2196f3',
-                color: 'white',
-                padding: '2px 8px',
-                marginRight: '8px',
-                borderRadius: '3px',
-                fontSize: '0.75rem',
-                fontWeight: 'normal',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                userSelect: 'none',
-              }}
-            >
-              {match.subtype}
-            </span>
-            <SymbolLabel symbol={match.symbol} />
+            <div className={styles.matchHeader}>
+              <span
+                className={`${styles.matchBadge} ${styles[match.subtype] || styles.default}`}
+              >
+                {match.subtype}
+              </span>
+              <SymbolLabel symbol={match.symbol} />
+            </div>
           </div>
-        </div>
-      ))}
-    </>
+        ))}
+      </div>
+    </div>
   );
 }

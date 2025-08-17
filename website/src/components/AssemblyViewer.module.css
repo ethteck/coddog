@@ -1,0 +1,216 @@
+/* AssemblyViewer Component Styles */
+
+.assemblySection {
+  margin: var(--spacing-lg) 0;
+}
+
+.sectionTitle {
+  margin-bottom: var(--spacing-md);
+  color: var(--color-primary);
+}
+
+.assemblyControls {
+  font-size: 0.875rem;
+  margin-bottom: var(--spacing-md);
+}
+
+.controlsRow {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-sm);
+}
+
+.inputGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.inputGroup label {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.inputGroup input {
+  margin: 0 0 0 4px;
+}
+
+.lineInput {
+  width: 50px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: var(--color-background-input);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition-normal);
+}
+
+.lineInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.resetButton {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.75rem;
+  background: var(--color-background-elevated);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.resetButton:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.resetButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggleButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--color-background-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all var(--transition-normal);
+}
+
+.toggleButton:hover {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.toggleArrow {
+  transition: transform var(--transition-normal);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.toggleArrow.expanded {
+  transform: rotate(90deg);
+}
+
+.assemblyContainer {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  max-height: 500px;
+  overflow-y: auto;
+  background: var(--color-background-input);
+  box-shadow: var(--shadow-sm);
+}
+
+.assemblyLine {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  font-family:
+    "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas",
+    "Courier New", monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  transition: background-color var(--transition-fast);
+  position: relative;
+}
+
+.assemblyLine:last-child {
+  border-bottom: none;
+}
+
+.assemblyLine:hover {
+  background: var(--color-background-elevated);
+}
+
+.assemblyLine.selected {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+
+.lineNumber {
+  color: var(--color-text-muted);
+  user-select: none;
+  min-width: 40px;
+  text-align: right;
+  margin-right: var(--spacing-sm);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.assemblyLine.selected .lineNumber {
+  color: var(--color-text-on-primary);
+  opacity: 0.8;
+}
+
+.lineContent {
+  user-select: none;
+  flex-grow: 1;
+  white-space: pre;
+}
+
+/* Scrollbar styling for assembly container */
+.assemblyContainer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.assemblyContainer::-webkit-scrollbar-track {
+  background: var(--color-background);
+  border-radius: var(--radius-sm);
+}
+
+.assemblyContainer::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.assemblyContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .controlsRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .inputGroup {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+
+  .lineInput {
+    width: 60px;
+  }
+
+  .assemblyContainer {
+    max-height: 300px;
+  }
+
+  .assemblyLine {
+    font-size: 0.75rem;
+    padding: var(--spacing-xs);
+  }
+
+  .lineNumber {
+    min-width: 35px;
+    font-size: 0.65rem;
+  }
+}

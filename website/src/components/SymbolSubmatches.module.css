@@ -1,0 +1,110 @@
+/* SymbolSubmatches Component Styles */
+
+.submatchCard {
+  background: var(--color-background-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.submatchCard:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+  border-color: var(--color-primary);
+}
+
+.submatchHeader {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-xs);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.submatchMeta {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.submatchContent {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.visualsContainer {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+}
+
+.matchVisual {
+  width: 30px;
+  height: 100px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.matchVisualHighlight {
+  fill: var(--color-primary);
+}
+
+.matchDetails {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: var(--spacing-xs);
+  font-size: 0.9rem;
+  flex-grow: 1;
+  line-height: 1.4;
+}
+
+.matchDetailsLabel {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.matchDetailsValue {
+  color: var(--color-text-primary);
+}
+
+.submatchList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.noMatches {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-muted);
+  font-style: italic;
+  background: var(--color-background-elevated);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .submatchContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+
+  .visualsContainer {
+    align-self: center;
+  }
+
+  .matchDetails {
+    grid-template-columns: 80px 1fr;
+    font-size: 0.85rem;
+    width: 100%;
+  }
+}

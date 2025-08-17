@@ -4,9 +4,11 @@ import type { SymbolMetadata } from '../api/symbols.tsx';
 export function SymbolLabel({
   symbol,
   link = true,
+  className = '',
 }: {
   symbol: SymbolMetadata;
   link?: boolean;
+  className?: string;
 }) {
   const content = (
     <>
@@ -16,10 +18,14 @@ export function SymbolLabel({
   );
 
   return link ? (
-    <Link to="/symbol/$symbolSlug" params={{ symbolSlug: symbol.slug }}>
+    <Link
+      to="/symbol/$symbolSlug"
+      params={{ symbolSlug: symbol.slug }}
+      className={className}
+    >
       {content}
     </Link>
   ) : (
-    content
+    <span className={className}>{content}</span>
   );
 }
