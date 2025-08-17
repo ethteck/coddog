@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import type { SymbolMetadata, SymbolSubmatchResult } from '../api/symbols.tsx';
 import { SymbolLabel } from './SymbolLabel.tsx';
 import styles from './SymbolSubmatches.module.css';
@@ -75,6 +76,22 @@ function SubmatchCard({
             })}
             )
           </span>
+        </div>
+
+        <div className={styles.submatchCompareLink}>
+          <Link
+            to="/compare"
+            search={{
+              sym1: querySym.slug,
+              start1: submatch.query_start,
+              sym2: submatch.symbol.slug,
+              start2: submatch.match_start,
+              len: submatch.len,
+            }}
+            className="button"
+          >
+            Compare
+          </Link>
         </div>
       </div>
     </div>
