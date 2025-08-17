@@ -21,6 +21,7 @@
   --color-text-on-primary: #23272a;
 
   --color-border: #632420;
+  --color-border-light: #a24043;
   --color-border-focus: var(--color-primary);
 
   /* Gray scale - using existing okLCH values but with semantic names */
