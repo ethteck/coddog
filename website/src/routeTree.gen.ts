@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as CompareRouteImport } from './routes/compare'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SymbolSymbolSlugIndexRouteImport } from './routes/symbol/$symbolSlug/index'
@@ -18,6 +19,11 @@ import { Route as SymbolSymbolSlugSubmatchRouteImport } from './routes/symbol/$s
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompareRoute = CompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -45,6 +51,7 @@ const SymbolSymbolSlugSubmatchRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
   '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
   '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
@@ -60,6 +68,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
+  '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
   '/symbol/$symbolSlug/': typeof SymbolSymbolSlugIndexRoute
@@ -69,6 +78,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/about'
+    | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
     | '/symbol/$symbolSlug'
@@ -76,6 +86,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/about'
+    | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
     | '/symbol/$symbolSlug'
@@ -83,6 +94,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/about'
+    | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
     | '/symbol/$symbolSlug/'
@@ -91,6 +103,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
+  CompareRoute: typeof CompareRoute
   SearchRoute: typeof SearchRoute
   SymbolSymbolSlugSubmatchRoute: typeof SymbolSymbolSlugSubmatchRoute
   SymbolSymbolSlugIndexRoute: typeof SymbolSymbolSlugIndexRoute
@@ -103,6 +116,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare': {
+      id: '/compare'
+      path: '/compare'
+      fullPath: '/compare'
+      preLoaderRoute: typeof CompareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -139,6 +159,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
+  CompareRoute: CompareRoute,
   SearchRoute: SearchRoute,
   SymbolSymbolSlugSubmatchRoute: SymbolSymbolSlugSubmatchRoute,
   SymbolSymbolSlugIndexRoute: SymbolSymbolSlugIndexRoute,
