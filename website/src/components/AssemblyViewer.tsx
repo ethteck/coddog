@@ -34,8 +34,8 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
   // Sync input fields with selected range or internal selection
   useEffect(() => {
     if (selectedRange) {
-      setStartLineInput((selectedRange.start + 1).toString());
-      setEndLineInput((selectedRange.end + 1).toString());
+      setStartLineInput(selectedRange.start.toString());
+      setEndLineInput(selectedRange.end.toString());
       setInternalSelection({
         start: selectedRange.start,
         end: selectedRange.end,
@@ -43,13 +43,11 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
     } else {
       setStartLineInput(
         internalSelection.start !== null
-          ? (internalSelection.start + 1).toString()
+          ? internalSelection.start.toString()
           : '',
       );
       setEndLineInput(
-        internalSelection.end !== null
-          ? (internalSelection.end + 1).toString()
-          : '',
+        internalSelection.end !== null ? internalSelection.end.toString() : '',
       );
     }
   }, [selectedRange, internalSelection]);
@@ -256,7 +254,7 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                 onClick={() => handleRowClick(index)}
                 className={`${styles.assemblyLine} ${isRowInRange(index) ? styles.selected : ''}`}
               >
-                <span className={styles.lineNumber}>{index + 1}</span>
+                <span className={styles.lineNumber}>{index}</span>
                 <span className={styles.lineNumber}>
                   0x
                   {(index * 4)
