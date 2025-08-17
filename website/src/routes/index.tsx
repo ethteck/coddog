@@ -37,10 +37,6 @@ function Home() {
     setDebouncedQuery(newQuery);
   }
 
-  function handleSymbolSelect(symbolName: string) {
-    navigate({ to: '/symbol', search: { name: symbolName } });
-  }
-
   return (
     <div className="home-container">
       {/* Hero Section */}
@@ -75,13 +71,7 @@ function Home() {
                 <ul className="results-list">
                   {symbols.slice(0, 5).map((sym) => (
                     <li key={sym.slug}>
-                      <button
-                        type="button"
-                        onClick={() => handleSymbolSelect(sym.name)}
-                        className="symbol-button"
-                      >
-                        <SymbolLabel symbol={sym} />
-                      </button>
+                      <SymbolLabel symbol={sym} className="symbol-button" />
                     </li>
                   ))}
                   {symbols.length > 5 && (
@@ -90,7 +80,7 @@ function Home() {
                         type="button"
                         className="button"
                         onClick={() =>
-                          navigate({ to: '/symbol', search: { name: query } })
+                          navigate({ to: '/search', search: { name: query } })
                         }
                       >
                         View all {symbols.length} results →

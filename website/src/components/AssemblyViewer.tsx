@@ -1,5 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import styles from './AssemblyViewer.module.css';
 
 interface SelectedRange {
   start: number;
@@ -188,19 +189,11 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
   }, []);
 
   return (
-    <>
-      <h3>Search range:</h3>
-      <div style={{ fontFamily: 'monospace', fontSize: '14px' }}>
-        <div
-          style={{
-            marginBottom: '10px',
-            display: 'flex',
-            gap: '10px',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+    <div className={styles.assemblySection}>
+      <h3 className={styles.sectionTitle}>Search range:</h3>
+      <div className={styles.assemblyControls}>
+        <div className={styles.controlsRow}>
+          <div className={styles.inputGroup}>
             <label>
               Start:
               <input
@@ -208,17 +201,12 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                 value={startLineInput}
                 onChange={(e) => handleStartLineChange(e.target.value)}
                 placeholder="1"
-                style={{
-                  width: '40px',
-                  padding: '2px 4px',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                }}
+                className={styles.lineInput}
               />
             </label>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <div className={styles.inputGroup}>
             <label>
               End:
               <input
@@ -226,12 +214,7 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                 value={endLineInput}
                 onChange={(e) => handleEndLineChange(e.target.value)}
                 placeholder={asm.length.toString()}
-                style={{
-                  width: '40px',
-                  padding: '2px 4px',
-                  fontFamily: 'monospace',
-                  fontSize: '12px',
-                }}
+                className={styles.lineInput}
               />
             </label>
           </div>
@@ -244,6 +227,7 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
               internalSelection.start === null &&
               internalSelection.end === null
             }
+            className={styles.resetButton}
           >
             Reset selection
           </button>
@@ -251,36 +235,17 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
         <button
           type="button"
           onClick={toggleExpanded}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
+          className={styles.toggleButton}
         >
           <span
-            style={{
-              transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              transition: 'transform 0.2s ease',
-              fontSize: '12px',
-            }}
+            className={`${styles.toggleArrow} ${isExpanded ? styles.expanded : ''}`}
           >
             ▶
           </span>
           {isExpanded ? 'Collapse' : 'Show asm'}
         </button>
         {isExpanded && (
-          <div
-            style={{
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              maxHeight: '500px',
-              overflowY: 'auto',
-              backgroundColor: '#640d0dff',
-            }}
-          >
+          <div className={styles.assemblyContainer}>
             {asm.map((line, index) => (
               // biome-ignore lint/a11y/useKeyWithClickEvents: div used for interactive row selection
               // biome-ignore lint/a11y/useSemanticElements: div with role button is appropriate here
@@ -289,48 +254,10 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                 tabIndex={index}
                 key={index + line}
                 onClick={() => handleRowClick(index)}
-                style={{
-                  padding: '4px 8px',
-                  borderBottom:
-                    index < asm.length - 1 ? '1px solid #eee' : 'none',
-                  cursor: 'pointer',
-                  backgroundColor: isRowInRange(index)
-                    ? '#bc8334ff'
-                    : 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isRowInRange(index)) {
-                    e.currentTarget.style.backgroundColor = '#640d0dff';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isRowInRange(index)) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }
-                }}
+                className={`${styles.assemblyLine} ${isRowInRange(index) ? styles.selected : ''}`}
               >
-                <span
-                  style={{
-                    minWidth: '40px',
-                    color: '#666',
-                    marginRight: '10px',
-                    textAlign: 'right',
-                    userSelect: 'none',
-                  }}
-                >
-                  {index + 1}
-                </span>
-                <span
-                  style={{
-                    minWidth: '40px',
-                    color: '#666',
-                    marginRight: '10px',
-                    textAlign: 'right',
-                    userSelect: 'none',
-                  }}
-                >
+                <span className={styles.lineNumber}>{index + 1}</span>
+                <span className={styles.lineNumber}>
                   0x
                   {(index * 4)
                     .toString(16)
@@ -339,12 +266,12 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                       '0',
                     )}
                 </span>
-                <span style={{ userSelect: 'none' }}>{line}</span>
+                <span className={styles.lineContent}>{line}</span>
               </div>
             ))}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 };

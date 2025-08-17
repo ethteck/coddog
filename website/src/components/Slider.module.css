@@ -36,7 +36,6 @@
   outline: 1px solid var(--color-gray-300);
   user-select: none;
   cursor: pointer;
-  transition: all var(--transition-normal);
 
   &:focus-visible {
     outline: 2px solid var(--color-secondary);

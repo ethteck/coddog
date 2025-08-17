@@ -11,9 +11,7 @@ import { AssemblyViewer } from '../../../components/AssemblyViewer';
 import Slider from '../../../components/Slider';
 import { SymbolLabel } from '../../../components/SymbolLabel';
 import { SymbolSubmatches } from '../../../components/SymbolSubmatches';
-
-type SortBy = 'length' | 'query_start';
-type SortDir = 'asc' | 'desc';
+import styles from './submatch.module.css';
 
 // Define search schema with proper types and defaults
 const searchSchema = z.object({
@@ -21,8 +19,6 @@ const searchSchema = z.object({
   end: z.number().optional(),
   windowSize: z.number().default(10),
   page: z.number().default(0),
-  sortBy: z.enum(['length', 'query_start']).default('length'),
-  sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
 
 // Constants
@@ -77,7 +73,6 @@ function SymbolSubmatch() {
     isLoading: isLoadingSubmatches,
     isError: isErrorSubmatches,
     error: errorSubmatches,
-    isPlaceholderData,
   } = useQuery({
     queryKey: [
       'symbol_submatches',
@@ -86,8 +81,6 @@ function SymbolSubmatch() {
       apiEnd,
       search.windowSize ?? DEFAULT_WINDOW_SIZE,
       search.page,
-      search.sortBy,
-      search.sortDir,
       PAGE_SIZE,
     ],
     queryFn: () =>
@@ -98,8 +91,8 @@ function SymbolSubmatch() {
         search.page,
         PAGE_SIZE,
         search.windowSize ?? DEFAULT_WINDOW_SIZE,
-        search.sortBy,
-        search.sortDir,
+        'length',
+        'desc',
       ),
     placeholderData: keepPreviousData,
     enabled: !!queryAsm, // Only fetch submatches after assembly is loaded
@@ -110,7 +103,7 @@ function SymbolSubmatch() {
     navigate({
       search: (prev) => ({
         ...prev,
-        start: range?.start ?? 0,
+        start: range?.start,
         end: range?.end,
         page: 0, // Reset page when changing range
       }),
@@ -135,18 +128,6 @@ function SymbolSubmatch() {
     });
   };
 
-  const handleSortChange = (value: SortBy) => {
-    navigate({
-      search: (prev) => ({ ...prev, sortBy: value }),
-    });
-  };
-
-  const handleSortDirectionChange = (value: SortDir) => {
-    navigate({
-      search: (prev) => ({ ...prev, sortDir: value }),
-    });
-  };
-
   // Calculate pagination info
   const totalPages = submatchResults
     ? Math.ceil(submatchResults.total_count / PAGE_SIZE)
@@ -157,41 +138,43 @@ function SymbolSubmatch() {
     : false;
 
   // Loading states
-  if (isLoadingMetadata) return <div>Loading query metadata...</div>;
-  if (isLoadingAsm) return <div>Loading query assembly...</div>;
+  if (isLoadingMetadata)
+    return <div className={styles.loading}>Loading query metadata...</div>;
+  if (isLoadingAsm)
+    return <div className={styles.loading}>Loading query assembly...</div>;
 
   // Error states
   if (isErrorMetadata) {
     return (
-      <div style={{ color: 'red' }}>{(errorMetadata as Error).message}</div>
+      <div className={styles.error}>{(errorMetadata as Error).message}</div>
     );
   }
   if (isErrorAsm) {
-    return <div style={{ color: 'red' }}>{(errorAsm as Error).message}</div>;
+    return <div className={styles.error}>{(errorAsm as Error).message}</div>;
   }
   if (isErrorSubmatches) {
     return (
-      <div style={{ color: 'red' }}>{(errorSubmatches as Error).message}</div>
+      <div className={styles.error}>{(errorSubmatches as Error).message}</div>
     );
   }
 
   // Data validation
   if (!querySymbol) {
     return (
-      <div style={{ color: 'red' }}>Query symbol data could not be loaded</div>
+      <div className={styles.error}>Query symbol data could not be loaded</div>
     );
   }
   if (!queryAsm) {
     return (
-      <div style={{ color: 'red' }}>
+      <div className={styles.error}>
         Query assembly data could not be loaded
       </div>
     );
   }
 
   return (
-    <>
-      <h2>
+    <div className={styles.submatchPage}>
+      <h2 className={styles.pageTitle}>
         Submatches for <SymbolLabel symbol={querySymbol} link={false} />
       </h2>
 
@@ -201,87 +184,97 @@ function SymbolSubmatch() {
         setSelectedRange={handleRangeChange}
       />
 
-      <div
-        style={{
-          marginBottom: '10px',
-          display: 'flex',
-          gap: '10px',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <span>Minimum match length:</span>
-          <Slider
-            min={MIN_WINDOW_SIZE}
-            max={50}
-            defaultValue={search.windowSize ?? DEFAULT_WINDOW_SIZE}
-            onChange={handleWindowSizeChange}
-          />
+      <div className={styles.controlsSection}>
+        <div className={styles.controlsRow}>
+          <div className={styles.sliderGroup}>
+            <span className={styles.sliderLabel}>Minimum match length:</span>
+            <Slider
+              min={MIN_WINDOW_SIZE}
+              max={50}
+              value={search.windowSize ?? DEFAULT_WINDOW_SIZE}
+              onChange={handleWindowSizeChange}
+            />
+          </div>
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '10px',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
+      <div className={styles.resultsSection}>
+        <h3 className={styles.resultsTitle}>
+          Search results ({submatchResults?.total_count || 0} total)
+          {isLoadingSubmatches && (
+            <span className={styles.loadingIndicator}> (Loading...)</span>
+          )}
+        </h3>
+
+        {submatchResults && (
+          <div>
+            <PageNavigation
+              handlePageChange={handlePageChange}
+              search={search}
+              isPlaceholderData={isLoadingSubmatches}
+              hasMore={hasMore}
+              totalPages={totalPages}
+            />
+            <SymbolSubmatches
+              querySym={querySymbol}
+              submatches={submatchResults.submatches}
+            />
+
+            <PageNavigation
+              handlePageChange={handlePageChange}
+              search={search}
+              isPlaceholderData={isLoadingSubmatches}
+              hasMore={hasMore}
+              totalPages={totalPages}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PageNavigation({
+  handlePageChange,
+  search,
+  isPlaceholderData,
+  hasMore,
+  totalPages,
+}: {
+  handlePageChange: (newPage: number) => void;
+  search: {
+    windowSize: number;
+    page: number;
+    start?: number | undefined;
+    end?: number | undefined;
+  };
+  isPlaceholderData: boolean;
+  hasMore: boolean;
+  totalPages: number;
+}) {
+  return (
+    <div className={styles.pagination}>
+      <button
+        type="button"
+        onClick={() => handlePageChange(Math.max(search.page - 1, 0))}
+        disabled={search.page === 0}
+        className={styles.paginationButton}
       >
-        <span>Sort by:</span>
-        <select
-          value={search.sortBy}
-          onChange={(e) => handleSortChange(e.target.value as SortBy)}
-        >
-          <option value="length">Length</option>
-          <option value="query_start">Query start</option>
-        </select>
-        <span>Sort direction:</span>
-        <select
-          value={search.sortDir}
-          onChange={(e) => handleSortDirectionChange(e.target.value as SortDir)}
-        >
-          <option value="asc">Ascending</option>
-          <option value="desc">Descending</option>
-        </select>
-      </div>
+        Previous Page
+      </button>
 
-      <br />
+      <span className={styles.pageInfo}>
+        Page {search.page + 1} of {totalPages}
+      </span>
 
-      <h3>
-        Search results ({submatchResults?.total_count || 0} total)
-        {isLoadingSubmatches && <span> (Loading...)</span>}
-      </h3>
-
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <button
-          type="button"
-          onClick={() => handlePageChange(Math.max(search.page - 1, 0))}
-          disabled={search.page === 0}
-        >
-          Previous Page
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handlePageChange(search.page + 1)}
-          disabled={isPlaceholderData || !hasMore}
-        >
-          Next Page
-        </button>
-
-        <span>
-          Page {search.page + 1} of {totalPages}
-        </span>
-      </div>
-
-      {submatchResults && (
-        <SymbolSubmatches
-          querySym={querySymbol}
-          submatches={submatchResults.submatches}
-        />
-      )}
-    </>
+      <button
+        type="button"
+        onClick={() => handlePageChange(search.page + 1)}
+        disabled={isPlaceholderData || !hasMore}
+        className={styles.paginationButton}
+      >
+        Next Page
+      </button>
+    </div>
   );
 }
