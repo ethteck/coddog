@@ -1,5 +1,6 @@
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import type { AsmInsn } from '../api/symbols';
 import styles from './AssemblyViewer.module.css';
 
 interface SelectedRange {
@@ -8,7 +9,7 @@ interface SelectedRange {
 }
 
 interface AssemblyViewerProps {
-  asm: string[];
+  asm: AsmInsn[];
   selectedRange: SelectedRange | null;
   setSelectedRange: (range: SelectedRange | null) => void;
 }
@@ -250,7 +251,7 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
               <div
                 role="button"
                 tabIndex={index}
-                key={index + line}
+                key={`${index}${line.opcode}`}
                 onClick={() => handleRowClick(index)}
                 className={`${styles.assemblyLine} ${isRowInRange(index) ? styles.selected : ''}`}
               >
@@ -264,7 +265,14 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
                       '0',
                     )}
                 </span>
-                <span className={styles.lineContent}>{line}</span>
+                <span className={styles.lineContent}>
+                  {line.opcode} {line.arguments.join(', ')}{' '}
+                  {line.branch_dest && (
+                    <span className={styles.branchDest}>
+                      → {line.branch_dest}
+                    </span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
