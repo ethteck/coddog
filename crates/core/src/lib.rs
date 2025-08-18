@@ -327,12 +327,20 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
                     }
                     DiffText::Argument(arg) => {
                         if let Some(ref mut insn) = current_insn {
-                            insn.arguments.push(arg.to_string());
+                            let arg = arg.to_string();
+                            if !insn.arguments.is_empty() && arg.to_lowercase() == "sp" {
+                                if let Some(mut last_arg) = insn.arguments.pop() {
+                                    last_arg.push_str("(sp)");
+                                    insn.arguments.push(last_arg);
+                                }
+                            } else {
+                                insn.arguments.push(arg);
+                            }
                         }
                     }
                     DiffText::BranchDest(dest) => {
                         if let Some(ref mut insn) = current_insn {
-                            insn.branch_dest = Some(dest.to_string());
+                            insn.branch_dest = Some(format!("{dest:X}"));
                         }
                     }
                     DiffText::Symbol(sym) => {

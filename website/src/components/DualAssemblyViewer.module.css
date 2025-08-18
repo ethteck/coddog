@@ -1,5 +1,6 @@
 /* DualAssemblyViewer Component Styles */
 
+/* Main container */
 .dualAssemblyViewer {
   margin: var(--spacing-lg) 0;
   border: 1px solid var(--color-border);
@@ -8,6 +9,7 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* Header styles */
 .header {
   display: flex;
   background: var(--color-background);
@@ -30,10 +32,11 @@
   border-right: none;
 }
 
+/* Assembly panel layout */
 .assembliesContainer {
   display: flex;
   min-height: 400px;
-  max-height: 600px;
+  max-height: 1500px;
 }
 
 .assemblyPanel {
@@ -42,6 +45,13 @@
   flex-direction: column;
 }
 
+.separator {
+  width: 1px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+/* Panel info and controls */
 .panelInfo {
   padding: var(--spacing-sm) var(--spacing-md);
   background: var(--color-background-input);
@@ -50,21 +60,36 @@
   color: var(--color-text-secondary);
 }
 
-.infoText {
+.contextControls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--spacing-sm);
+}
+
+.contextControlGroup {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+/* Common monospace elements */
+.infoText,
+.columnHeaders,
+.assemblyContainer {
   font-family:
     "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas",
     "Courier New", monospace;
 }
 
+/* Column headers */
 .columnHeaders {
   display: flex;
   align-items: center;
   padding: var(--spacing-xs) var(--spacing-sm);
   background: var(--color-background);
   border-bottom: 2px solid var(--color-border);
-  font-family:
-    "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas",
-    "Courier New", monospace;
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--color-text-secondary);
@@ -73,18 +98,19 @@
   z-index: 2;
 }
 
-.headerInsn {
-  min-width: 40px;
+.headerInsn,
+.headerOffset {
   text-align: center;
   margin-right: var(--spacing-sm);
   flex-shrink: 0;
 }
 
+.headerInsn {
+  min-width: 40px;
+}
+
 .headerOffset {
   min-width: 60px;
-  text-align: center;
-  margin-right: var(--spacing-sm);
-  flex-shrink: 0;
 }
 
 .headerAsm {
@@ -92,30 +118,58 @@
   text-align: left;
 }
 
-.separator {
-  width: 1px;
-  background: var(--color-border);
-  flex-shrink: 0;
-}
-
+/* Assembly container and scrollbar */
 .assemblyContainer {
   flex: 1;
   overflow-y: auto;
   background: var(--color-background-input);
-  font-family:
-    "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", "Consolas",
-    "Courier New", monospace;
 }
 
+.assemblyContainer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.assemblyContainer::-webkit-scrollbar-track {
+  background: var(--color-background);
+  border-radius: var(--radius-sm);
+}
+
+.assemblyContainer::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.assemblyContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-light);
+}
+
+.assemblyContainer:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Assembly line base styles */
 .assemblyLine {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--color-border-subtle);
+  position: relative;
   display: flex;
   align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border-subtle);
   font-size: 0.8rem;
   line-height: 1.4;
   min-height: 1.6rem;
   transition: background-color var(--transition-fast);
+}
+
+.assemblyLine::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background-color var(--transition-normal);
 }
 
 .assemblyLine:last-child {
@@ -126,6 +180,36 @@
   background: var(--color-background-elevated);
 }
 
+.assemblyLine:hover::before {
+  background: var(--color-primary);
+}
+
+/* Line number and address styles */
+.lineNumber,
+.addressNumber {
+  color: var(--color-text-muted);
+  user-select: none;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.lineNumber {
+  min-width: 40px;
+  margin-right: var(--spacing-md);
+}
+
+.addressNumber {
+  min-width: 60px;
+  margin-right: var(--spacing-sm);
+  font-size: 0.7rem;
+}
+
+.lineContent {
+  flex-grow: 1;
+  white-space: pre;
+}
+
+/* Assembly line state modifiers */
 .assemblyLine.highlighted {
   background: var(--color-primary);
   color: var(--color-text-on-primary);
@@ -146,31 +230,16 @@
   background: var(--color-background-subtle);
 }
 
-.lineNumber {
-  color: var(--color-text-muted);
-  user-select: none;
-  min-width: 40px;
-  text-align: right;
-  margin-right: var(--spacing-sm);
-  font-size: 0.7rem;
-  flex-shrink: 0;
+.assemblyLine.contextLine {
+  opacity: 0.6;
 }
 
-.addressNumber {
-  color: var(--color-text-muted);
-  user-select: none;
-  min-width: 60px;
-  text-align: right;
-  margin-right: var(--spacing-sm);
-  font-size: 0.7rem;
-  flex-shrink: 0;
+.assemblyLine.contextLine:hover {
+  opacity: 0.8;
 }
 
-.lineContent {
-  user-select: all;
-  flex-grow: 1;
-  white-space: pre;
-  font-size: 0.8rem;
+.assemblyLine.contextLine:hover::before {
+  background: var(--color-border-light);
 }
 
 .emptyLine .lineNumber,
@@ -179,23 +248,57 @@
   color: transparent;
 }
 
-/* Scrollbar styling for assembly containers */
-.assemblyContainer::-webkit-scrollbar {
-  width: 8px;
+.contextLine .lineNumber,
+.contextLine .addressNumber,
+.contextLine .lineContent {
+  color: var(--color-text-muted);
 }
 
-.assemblyContainer::-webkit-scrollbar-track {
-  background: var(--color-background);
+/* Line type indicators */
+.identicalLine::before {
+  background: #4caf50;
+}
+
+.differentLine::before {
+  background: #ff9800;
+}
+
+/* Diff styling */
+.opcode {
+  font-weight: 600;
+}
+
+.arguments,
+.argument {
+  color: var(--color-text);
+}
+
+.argumentSeparator {
+  color: var(--color-text-secondary);
+}
+
+.branchDest {
+  font-style: italic;
+}
+
+.diffOpcode,
+.diffArguments,
+.diffBranchDest {
+  padding: 0.1em 0.2em;
   border-radius: var(--radius-sm);
 }
 
-.assemblyContainer::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: var(--radius-sm);
+.diffOpcode {
+  color: #f44336;
+  font-weight: 700;
 }
 
-.assemblyContainer::-webkit-scrollbar-thumb:hover {
-  background: var(--color-border-light);
+.diffArguments {
+  color: #f57700;
+}
+
+.diffBranchDest {
+  color: #1976d2;
 }
 
 /* Responsive design */
@@ -255,24 +358,6 @@
     padding: var(--spacing-xs);
   }
 
-  .lineNumber,
-  .addressNumber {
-    min-width: 35px;
-    font-size: 0.65rem;
-  }
-
-  .addressNumber {
-    min-width: 50px;
-  }
-
-  .lineContent {
-    font-size: 0.75rem;
-  }
-
-  .assembliesContainer {
-    max-height: 600px;
-  }
-
   .assemblyPanel {
     min-height: 150px;
   }
@@ -289,29 +374,16 @@
   .headerOffset {
     min-width: 45px;
   }
-}
 
-/* Focus and accessibility */
-.assemblyContainer:focus-within {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-}
+  .lineNumber {
+    min-width: 35px;
+  }
 
-.assemblyLine {
-  position: relative;
-}
+  .addressNumber {
+    min-width: 50px;
+  }
 
-.assemblyLine::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: transparent;
-  transition: background-color var(--transition-normal);
-}
-
-.assemblyLine:hover::before {
-  background: var(--color-primary);
+  .lineContent {
+    font-size: 0.75rem;
+  }
 }
