@@ -9,6 +9,7 @@ use editdistancek::edit_distance_bounded;
 use objdiff_core::diff::DiffObjConfig;
 use objdiff_core::diff::display::DiffText;
 use object::Endianness;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -257,7 +258,30 @@ pub fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
     }
 }
 
-pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<String>> {
+#[derive(Debug, Clone, Serialize)]
+pub struct AsmInsn {
+    pub opcode: String,
+    pub address: Option<String>,
+    pub arguments: Vec<String>,
+    pub branch_dest: Option<String>,
+    pub symbol: Option<String>,
+    pub addend: Option<String>,
+}
+
+impl AsmInsn {
+    fn new(opcode: String) -> Self {
+        Self {
+            opcode,
+            address: None,
+            arguments: Vec::new(),
+            branch_dest: None,
+            symbol: None,
+            addend: None,
+        }
+    }
+}
+
+pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmInsn>> {
     let object_bytes = std::fs::read(object_path).expect("Failed to read object file");
 
     let diff_config = DiffObjConfig {
@@ -270,10 +294,9 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<Stri
     let diff = objdiff_core::diff::code::no_diff_code(&object, symbol_idx as usize, &diff_config)?;
 
     let mut ret = Vec::new();
+    let mut current_insn: Option<AsmInsn> = None;
 
     for row in &diff.instruction_rows {
-        let mut line = String::new();
-
         objdiff_core::diff::display::display_row(
             &object,
             symbol_idx as usize,
@@ -282,27 +305,56 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<Stri
             |segment| {
                 match segment.text {
                     DiffText::Eol => {
-                        ret.push(line.clone());
-                        line = String::new();
+                        if let Some(insn) = current_insn.take() {
+                            ret.push(insn);
+                        }
                         return Ok(());
                     }
-                    DiffText::Basic(s) => line.push_str(s),
-                    DiffText::Line(_) => {}
-                    DiffText::Address(_) => {}
-                    DiffText::Opcode(m, _) => line.push_str(format!("{m:} ").as_str()),
-                    DiffText::Argument(a) => line.push_str(&a.to_string()),
-                    DiffText::BranchDest(d) => line.push_str(&d.to_string()),
-                    DiffText::Symbol(s) => {
-                        line.push_str(&s.demangled_name.clone().unwrap_or(s.name.clone()))
+                    DiffText::Basic(_) | DiffText::Line(_) | DiffText::Spacing(_) => {
+                        // Ignore these variants as requested
                     }
-                    DiffText::Addend(a) => line.push_str(&a.to_string()),
-                    DiffText::Spacing(s) => {
-                        line.push_str(&std::iter::repeat_n(" ", s as usize).collect::<String>())
+                    DiffText::Address(addr) => {
+                        if let Some(ref mut insn) = current_insn {
+                            insn.address = Some(addr.to_string());
+                        }
+                    }
+                    DiffText::Opcode(opcode, _) => {
+                        // End current instruction and start new one
+                        if let Some(insn) = current_insn.take() {
+                            ret.push(insn);
+                        }
+                        current_insn = Some(AsmInsn::new(opcode.to_string()));
+                    }
+                    DiffText::Argument(arg) => {
+                        if let Some(ref mut insn) = current_insn {
+                            insn.arguments.push(arg.to_string());
+                        }
+                    }
+                    DiffText::BranchDest(dest) => {
+                        if let Some(ref mut insn) = current_insn {
+                            insn.branch_dest = Some(dest.to_string());
+                        }
+                    }
+                    DiffText::Symbol(sym) => {
+                        if let Some(ref mut insn) = current_insn {
+                            insn.symbol =
+                                Some(sym.demangled_name.clone().unwrap_or(sym.name.clone()));
+                        }
+                    }
+                    DiffText::Addend(add) => {
+                        if let Some(ref mut insn) = current_insn {
+                            insn.addend = Some(add.to_string());
+                        }
                     }
                 }
                 Ok(())
             },
         )?;
+    }
+
+    // Push any remaining instruction
+    if let Some(insn) = current_insn {
+        ret.push(insn);
     }
 
     Ok(ret)

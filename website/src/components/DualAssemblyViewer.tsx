@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useCallback, useMemo, useRef } from 'react';
-import type { SymbolAsm, SymbolMetadata } from '../api/symbols.tsx';
+import type { AsmInsn, SymbolAsm, SymbolMetadata } from '../api/symbols.tsx';
 import styles from './DualAssemblyViewer.module.css';
 import { SymbolLabel } from './SymbolLabel.tsx';
 
@@ -76,10 +76,21 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
     return `0x${(index * 4).toString(16).padStart(hexLength, '0')}`;
   }, []);
 
+  const renderAssemblyLineContent = useCallback((asm: AsmInsn) => {
+    return (
+      <>
+        {asm.opcode} {asm.arguments.join(', ')}{' '}
+        {asm.branch_dest && (
+          <span className={styles.branchDest}>→ {asm.branch_dest}</span>
+        )}
+      </>
+    );
+  }, []);
+
   // Render assembly lines for a given range
   const renderAssemblyLines = useCallback(
     (
-      asm: string[],
+      asm: AsmInsn[],
       range: { start: number; end: number },
       totalDisplayLines: number,
       side: 'left' | 'right',
@@ -103,7 +114,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
               {hasContent ? formatAddress(actualIndex, asm.length) : ''}
             </span>
             <span className={styles.lineContent}>
-              {hasContent ? asm[actualIndex] : ''}
+              {hasContent ? renderAssemblyLineContent(asm[actualIndex]) : ''}
             </span>
           </div>,
         );
@@ -111,7 +122,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
 
       return lines;
     },
-    [formatAddress],
+    [formatAddress, renderAssemblyLineContent],
   );
 
   return (
