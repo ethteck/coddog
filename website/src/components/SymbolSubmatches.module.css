@@ -8,6 +8,7 @@
   margin-bottom: var(--spacing-sm);
   box-shadow: var(--shadow-sm);
   transition: all var(--transition-normal);
+  user-select: none;
 }
 
 .submatchCard:hover {
@@ -68,10 +69,12 @@
 .matchDetailsLabel {
   font-weight: 500;
   color: var(--color-text-secondary);
+  user-select: none;
 }
 
 .matchDetailsValue {
   color: var(--color-text-primary);
+  user-select: none;
 }
 
 .submatchList {

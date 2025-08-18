@@ -33,26 +33,27 @@ export const Route = createRootRoute({
       </div>
       <div className="footer">
         <p>
+          <img
+            src={logo}
+            width="60px"
+            className="footer-logo"
+            alt="coddog logo mini"
+            title="woof, im a coddog"
+          />
+          , the dog that sniffs for cod
+        </p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          made with{' '}
           <a
             href={`https://github.com/ethteck/coddog/commit/${process.env.GIT_HASH}`}
             target="_blank"
             rel="noopener noreferrer"
             title={`Built on commit ${process.env.GIT_HASH}`}
-            className="footer-link"
+            style={{ color: 'var(--color-primary-dark)' }}
           >
-            <img
-              src={logo}
-              width="60px"
-              className="footer-logo"
-              alt="coddog logo mini"
-            />
-          </a>
-          , the dog that sniffs for cod
-        </p>
-        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-          made with{' '}
-          <span style={{ color: 'var(--color-primary-dark)' }}>cod</span> by{' '}
-          <a href="https://github.com/ethteck">ethteck</a>
+            cod
+          </a>{' '}
+          by <a href="https://github.com/ethteck">ethteck</a>
         </p>
       </div>
       {/*<TanStackRouterDevtools/>*/}
