@@ -29,8 +29,17 @@ export type SymbolSubmatchResults = {
   submatches: SymbolSubmatchResult[];
 };
 
+export type AsmInsn = {
+  opcode: string;
+  address?: string;
+  arguments: string[];
+  branch_dest?: string;
+  symbol?: string;
+  addend?: string;
+};
+
 export type SymbolAsm = {
-  asm: string[];
+  asm: AsmInsn[];
 };
 
 export const fetchSymbolsByName = async (

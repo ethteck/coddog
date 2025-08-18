@@ -6,6 +6,7 @@ use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_validated_extractors::ValidatedJson;
+use coddog_core::AsmInsn;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{
     DBSymbol, QueryWindowsRequest, SortDirection, SubmatchResult, SubmatchResultOrder,
@@ -119,7 +120,7 @@ async fn query_symbols_by_slug(
 fn get_asm_for_symbol(
     object_path: &str,
     symbol_idx: i32,
-) -> Result<Vec<String>, (StatusCode, String)> {
+) -> Result<Vec<AsmInsn>, (StatusCode, String)> {
     let asm_text = coddog_core::get_asm_for_symbol(object_path, symbol_idx).map_err(|e| {
         eprintln!("Error getting ASM from symbol {symbol_idx} in {object_path}: {e}");
         (
