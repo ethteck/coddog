@@ -19,12 +19,20 @@ function SubmatchCard({
   const matchHeightPercent = submatch.len / matchSymLen;
 
   return (
-    <div
+    <Link
       key={`${submatch.symbol.slug}_${submatch.query_start}_${submatch.match_start}_${submatch.len}`}
       className={styles.submatchCard}
+      to="/compare"
+      search={{
+        sym1: querySym.slug,
+        start1: submatch.query_start,
+        sym2: submatch.symbol.slug,
+        start2: submatch.match_start,
+        len: submatch.len,
+      }}
     >
       <div className={styles.submatchHeader}>
-        <SymbolLabel symbol={submatch.symbol} />
+        <SymbolLabel symbol={submatch.symbol} link={false} />
         <span className={styles.submatchMeta} />
       </div>
 
@@ -77,24 +85,8 @@ function SubmatchCard({
             )
           </span>
         </div>
-
-        <div className={styles.submatchCompareLink}>
-          <Link
-            to="/compare"
-            search={{
-              sym1: querySym.slug,
-              start1: submatch.query_start,
-              sym2: submatch.symbol.slug,
-              start2: submatch.match_start,
-              len: submatch.len,
-            }}
-            className="button"
-          >
-            Compare
-          </Link>
-        </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

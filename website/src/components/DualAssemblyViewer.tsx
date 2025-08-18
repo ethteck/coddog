@@ -19,7 +19,7 @@ interface DualAssemblyViewerProps {
   rightStartLine?: number;
   leftMetadata: SymbolMetadata;
   rightMetadata: SymbolMetadata;
-  maxDisplayLines?: number;
+  maxDisplayLines: number;
   enableLineHighlight?: boolean;
   contextLines?: number; // Number of context lines to show before/after
 }
@@ -31,7 +31,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
   rightStartLine = 0,
   leftMetadata,
   rightMetadata,
-  maxDisplayLines = 50,
+  maxDisplayLines,
   contextLines = 3,
 }) => {
   const leftScrollRef = useRef<HTMLDivElement>(null);
@@ -223,9 +223,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
           return (
             <span key={`${arg}-${asm.opcode}-${index}`}>
               <span className={`${styles.argument} ${argClass}`}>{arg}</span>
-              {!isLastArg && (
-                <span className={styles.argumentSeparator}>, </span>
-              )}
+              {!isLastArg && <span>, </span>}
             </span>
           );
         });
@@ -236,9 +234,10 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
           <span className={`${styles.opcode} ${opcodeClass}`}>
             {asm.opcode}
           </span>{' '}
-          <span className={styles.arguments}>{renderArguments()}</span>{' '}
+          <span className={styles.arguments}>{renderArguments()}</span>
           {asm.branch_dest && (
             <span className={`${styles.branchDest} ${branchDestClass}`}>
+              {asm.arguments.length !== 0 ? ' ' : ''}
               {'->'} {asm.branch_dest}
             </span>
           )}
@@ -348,7 +347,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
             className={`${styles.assemblyLine} ${lineClass}`}
           >
             <span className={styles.lineNumber}>
-              {hasContent ? actualIndex : ''}
+              {hasContent ? (actualIndex * 4).toString(16).toUpperCase() : ''}
             </span>
             <span className={styles.lineContent}>
               {hasContent
@@ -371,22 +370,15 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
     <div className={styles.dualAssemblyViewer}>
       <div className={styles.header}>
         <h3 className={styles.title}>
-          <SymbolLabel symbol={leftMetadata} link={false} />
+          <SymbolLabel symbol={leftMetadata} link={true} />
         </h3>
         <h3 className={styles.title}>
-          <SymbolLabel symbol={rightMetadata} link={false} />
+          <SymbolLabel symbol={rightMetadata} link={true} />
         </h3>
       </div>
 
       <div className={styles.assembliesContainer}>
         <div className={styles.assemblyPanel}>
-          <div className={styles.panelInfo}>
-            <span className={styles.infoText}>
-              Lines {leftRange.start}-{leftRange.end} of {leftAsm.asm.length}
-              {leftStartLine > 0 && ` (offset: +${leftStartLine})`}
-            </span>
-          </div>
-
           <div className={styles.columnHeaders}>
             <span className={styles.headerInsn}>Insn</span>
             <span className={styles.headerAsm}>Asm</span>
@@ -410,12 +402,6 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
         <div className={styles.separator} />
 
         <div className={styles.assemblyPanel}>
-          <div className={styles.panelInfo}>
-            <span className={styles.infoText}>
-              Lines {rightRange.start}-{rightRange.end} of {rightAsm.asm.length}
-              {rightStartLine > 0 && ` (offset: +${rightStartLine})`}
-            </span>
-          </div>
           <div className={styles.columnHeaders}>
             <span className={styles.headerInsn}>Insn</span>
             <span className={styles.headerAsm}>Asm</span>

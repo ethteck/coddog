@@ -274,14 +274,10 @@ a:hover {
   margin: 0 0 3px 0;
 }
 
-.footer-link {
-  display: inline-block;
-  vertical-align: sub;
-}
-
 .footer-logo {
   filter: grayscale(1) contrast(200%) brightness(0.5);
   margin-right: var(--spacing-xs);
+  vertical-align: sub;
 }
 
 .logo {

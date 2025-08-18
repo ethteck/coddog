@@ -125,6 +125,7 @@ function SymbolSubmatch() {
   const handlePageChange = (newPage: number) => {
     navigate({
       search: (prev) => ({ ...prev, page: newPage }),
+      resetScroll: false,
     });
   };
 
