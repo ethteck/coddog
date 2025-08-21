@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM projects WHERE id = $1",
+  "query": "SELECT * FROM projects WHERE name LIKE $1",
   "describe": {
     "columns": [
       {
@@ -21,7 +21,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -30,5 +30,5 @@
       true
     ]
   },
-  "hash": "29356ceade5be500173e8655241a35973a4333a3d19ec0b9e3dfabbd0bc97b8c"
+  "hash": "29041b05686cacdf9b421d13f9a3339c9ba11c98166f912f37cebf9e0323b753"
 }

@@ -5,22 +5,19 @@ use sqlx::{Pool, Postgres};
 #[derive(Deserialize)]
 pub struct CreateProjectRequest {
     pub name: String,
-    pub platform: i32,
     pub repo: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateProjectRequest {
     pub name: String,
-    pub platform: i32,
     pub repo: Option<String>,
 }
 
 pub async fn create(conn: Pool<Postgres>, request: &CreateProjectRequest) -> anyhow::Result<i64> {
     let rec = sqlx::query!(
-        "INSERT INTO projects (name, platform, repo) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO projects (name, repo) VALUES ($1, $2) RETURNING id",
         request.name,
-        request.platform,
         request.repo
     )
     .fetch_one(&conn)
@@ -35,9 +32,8 @@ pub async fn update(
     request: &UpdateProjectRequest,
 ) -> anyhow::Result<()> {
     sqlx::query!(
-        "UPDATE projects SET name = $1, platform = $2, repo = $3 WHERE id = $4",
+        "UPDATE projects SET name = $1, repo = $2 WHERE id = $3",
         request.name,
-        request.platform,
         request.repo,
         id
     )
@@ -56,13 +52,9 @@ pub async fn query_by_id(conn: Pool<Postgres>, id: i64) -> anyhow::Result<Option
 }
 
 pub async fn query_by_name(conn: Pool<Postgres>, query: &str) -> anyhow::Result<Vec<Project>> {
-    let rows = sqlx::query_as!(
-        Project,
-        "SELECT * FROM projects WHERE projects.name LIKE $1",
-        query
-    )
-    .fetch_all(&conn)
-    .await?;
+    let rows = sqlx::query_as!(Project, "SELECT * FROM projects WHERE name LIKE $1", query)
+        .fetch_all(&conn)
+        .await?;
 
     Ok(rows)
 }

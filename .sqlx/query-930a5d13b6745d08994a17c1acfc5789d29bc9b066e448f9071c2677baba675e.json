@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\",\n           projects.name AS project_name, projects.id AS project_id, projects.platform,\n           projects.repo AS project_repo\n    FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN objects ON objects.id = sources.object_id\n    LEFT JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.name ILIKE $1",
+  "query": "\n    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,\n           symbols.symbol_idx,\n           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,\n            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,\n           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,\n            projects.name AS project_name, projects.id as project_id,\n           projects.repo AS project_repo\n        FROM symbols\n    INNER JOIN sources ON sources.id = symbols.source_id\n    INNER JOIN objects ON objects.id = sources.object_id\n    INNER JOIN versions ON versions.id = sources.version_id\n    INNER JOIN projects on sources.project_id = projects.id\n    WHERE symbols.exact_hash = $1 AND NOT symbols.id = $2",
   "describe": {
     "columns": [
       {
@@ -15,18 +15,18 @@
       },
       {
         "ordinal": 2,
-        "name": "pos",
-        "type_info": "Int8"
-      },
-      {
-        "ordinal": 3,
         "name": "len",
         "type_info": "Int4"
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "name",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "is_decompiled",
+        "type_info": "Bool"
       },
       {
         "ordinal": 5,
@@ -80,18 +80,18 @@
       },
       {
         "ordinal": 15,
+        "name": "platform",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
         "name": "project_name",
         "type_info": "Text"
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "project_id",
         "type_info": "Int8"
-      },
-      {
-        "ordinal": 17,
-        "name": "platform",
-        "type_info": "Int4"
       },
       {
         "ordinal": 18,
@@ -101,7 +101,8 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -126,5 +127,5 @@
       true
     ]
   },
-  "hash": "33694d3c4096af849e619bc111ec44abeda2fad1cd7573a238243af964e780a0"
+  "hash": "930a5d13b6745d08994a17c1acfc5789d29bc9b066e448f9071c2677baba675e"
 }

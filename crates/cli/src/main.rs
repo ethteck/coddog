@@ -1,12 +1,12 @@
 #[cfg(feature = "db")]
 mod db;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, Binary, Platform, Symbol, get_submatches,
-    ingest::{read_elf, read_map},
+    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
+    Symbol,
 };
 
 use colored::*;
@@ -148,6 +148,8 @@ enum DbCommands {
         /// Window size (smaller values will find more matches but take longer)
         window_size: usize,
     },
+    /// Import data from a locally-loaded decomp.me database
+    ImportDecompme {},
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]

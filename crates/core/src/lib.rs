@@ -35,6 +35,7 @@ pub enum Platform {
     Ps2,
     Gc,
     Wii,
+    Psp,
 }
 
 impl Platform {
@@ -45,6 +46,28 @@ impl Platform {
             "ps2" => Some(Platform::Ps2),
             "gc" => Some(Platform::Gc),
             "wii" => Some(Platform::Wii),
+            "psp" => Some(Platform::Psp),
+            _ => None,
+        }
+    }
+
+    pub fn from_decompme_name(name: &str) -> Option<Self> {
+        match name {
+            "n64" => Some(Platform::N64),
+            "ps1" => Some(Platform::Psx),
+            "ps2" => Some(Platform::Ps2),
+            "psp" => Some(Platform::Psp),
+            "gc_wii" => None, // TODO: not sure how to distinguish between gc/wii - do we need to?
+            "gba" => None,    // TODO: needs arm support
+            "nds_arm9" => None, // TODO: needs arm support
+            "n3ds" => None,   // TODO: needs arm support
+            "irix" => None,   // TODO: not sure
+            "switch" => None, // TODO: needs arm support
+            "win32" => None,  // :frull:
+            "msdos" => None,  // :frull:
+            "saturn" => None, // TODO: needs sh2 support
+            "macosx" => None, // :frull:
+            "macos9" => None, // :frull:
             _ => None,
         }
     }
@@ -56,6 +79,7 @@ impl Platform {
             2 => Some(Platform::Ps2),
             3 => Some(Platform::Gc),
             4 => Some(Platform::Wii),
+            5 => Some(Platform::Psp),
             _ => None,
         }
     }
@@ -67,6 +91,7 @@ impl Platform {
             Platform::Ps2 => Endianness::Little,
             Platform::Gc => Endianness::Big,
             Platform::Wii => Endianness::Big,
+            Platform::Psp => Endianness::Little,
         }
     }
 
@@ -77,6 +102,7 @@ impl Platform {
             Platform::Ps2 => Arch::Mips,
             Platform::Gc => Arch::Ppc,
             Platform::Wii => Arch::Ppc,
+            Platform::Psp => Arch::Mips,
         }
     }
 }
@@ -91,8 +117,6 @@ pub struct Symbol {
     pub opcodes: Vec<u16>,
     /// the symbol's memory address
     pub vram: usize,
-    /// the file offset of the symbol
-    pub offset: usize,
     /// whether the symbol is decompiled
     pub is_decompiled: bool,
     /// the opcode hash for the symbol
@@ -122,7 +146,6 @@ pub struct SymbolDef {
     name: String,
     bytes: Vec<u8>,
     vram: usize,
-    offset: usize,
     is_decompiled: bool,
     platform: Platform,
     relocations: BTreeMap<u64, CoddogRel>,
@@ -157,7 +180,6 @@ impl Symbol {
             bytes,
             opcodes,
             vram: def.vram,
-            offset: def.offset,
             is_decompiled: def.is_decompiled,
             exact_hash,
             equiv_hash,

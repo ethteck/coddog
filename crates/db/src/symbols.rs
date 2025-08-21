@@ -5,8 +5,8 @@ use sqlx::{Pool, Postgres, Transaction};
 
 type BulkSymbolData = (
     Vec<i64>,
-    Vec<i64>,
     Vec<String>,
+    Vec<bool>,
     Vec<i64>,
     Vec<i64>,
     Vec<i64>,
@@ -23,7 +23,7 @@ pub struct QuerySymbolsBySlugRequest {
     pub slug: String,
 }
 
-pub async fn create(
+pub async fn create_many(
     tx: &mut Transaction<'_, Postgres>,
     source_id: i64,
     symbols: &[Symbol],
@@ -32,31 +32,38 @@ pub async fn create(
 
     for chunk in symbols.chunks(CHUNK_SIZE) {
         let source_ids = vec![source_id; chunk.len()];
-        let (offsets, lens, names, symbol_idxes, opcode_hashes, equiv_hashes, exact_hashes): BulkSymbolData =
-            chunk
-                .iter()
-                .map(|s| {
-                    (
-                        s.offset as i64,
-                        s.bytes.len() as i64,
-                        s.name.clone(),
-                        s.symbol_idx as i64,
-                        s.opcode_hash as i64,
-                        s.equiv_hash as i64,
-                        s.exact_hash as i64,
-                    )
-                })
-                .collect();
+        let (
+            lens,
+            names,
+            is_decompileds,
+            symbol_idxes,
+            opcode_hashes,
+            equiv_hashes,
+            exact_hashes,
+        ): BulkSymbolData = chunk
+            .iter()
+            .map(|s| {
+                (
+                    s.bytes.len() as i64,
+                    s.name.clone(),
+                    s.is_decompiled,
+                    s.symbol_idx as i64,
+                    s.opcode_hash as i64,
+                    s.equiv_hash as i64,
+                    s.exact_hash as i64,
+                )
+            })
+            .collect();
 
         let rows = sqlx::query!(
             "
-                INSERT INTO symbols (pos, len, name, symbol_idx, opcode_hash, equiv_hash, exact_hash, source_id)
-                SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[])
+                INSERT INTO symbols (len, name, is_decompiled, symbol_idx, opcode_hash, equiv_hash, exact_hash, source_id)
+                SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::boolean[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[])
                 RETURNING id
         ",
-            &offsets as &[i64],
             &lens as &[i64],
             &names,
+            &is_decompileds,
             &symbol_idxes,
             &opcode_hashes,
             &equiv_hashes,
@@ -75,16 +82,43 @@ pub async fn create(
     ret
 }
 
+pub async fn create_one(
+    tx: &mut Transaction<'_, Postgres>,
+    source_id: i64,
+    symbol: &Symbol,
+) -> i64 {
+    let row = sqlx::query!(
+            "
+                INSERT INTO symbols (len, name, is_decompiled, symbol_idx, opcode_hash, equiv_hash, exact_hash, source_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id
+        ",
+        symbol.bytes.len() as i64,
+        symbol.name.clone(),
+        symbol.is_decompiled,
+        symbol.symbol_idx as i64,
+        symbol.opcode_hash as i64,
+        symbol.equiv_hash as i64,
+        symbol.exact_hash as i64,
+        source_id
+        )
+        .fetch_one(&mut **tx)
+        .await
+        .unwrap();
+
+    row.id
+}
+
 pub async fn query_by_id(conn: Pool<Postgres>, query: i64) -> anyhow::Result<Option<DBSymbol>> {
     let sym = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
            symbols.symbol_idx,
            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-           projects.name AS project_name, projects.id AS project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+           projects.name AS project_name, projects.id AS project_id,
            projects.repo AS project_repo
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
@@ -104,12 +138,12 @@ pub async fn query_by_slug(conn: Pool<Postgres>, query: &str) -> anyhow::Result<
     let sym = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
             sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-           projects.name AS project_name, projects.id AS project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+           projects.name AS project_name, projects.id AS project_id,
            projects.repo AS project_repo
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
@@ -132,12 +166,12 @@ pub async fn query_by_name(
     let sym = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
             sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-           projects.name AS project_name, projects.id AS project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+           projects.name AS project_name, projects.id AS project_id,
            projects.repo AS project_repo
     FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
@@ -160,13 +194,13 @@ pub async fn query_by_opcode_hash(
     let syms = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
             sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-            projects.name AS project_name, projects.id as project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+            projects.name AS project_name, projects.id as project_id,
            projects.repo AS project_repo
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
@@ -190,13 +224,13 @@ pub async fn query_by_equiv_hash(
     let syms = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash,
            symbols.source_id,
             sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-            projects.name AS project_name, projects.id as project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+            projects.name AS project_name, projects.id as project_id,
            projects.repo AS project_repo
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
@@ -220,12 +254,12 @@ pub async fn query_by_exact_hash(
     let syms = sqlx::query_as!(
         DBSymbol,
         "
-    SELECT symbols.id, symbols.slug, symbols.pos, symbols.len, symbols.name,
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
            symbols.symbol_idx,
            symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
             sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
-           versions.id AS \"version_id?\", versions.name AS \"version_name?\",
-            projects.name AS project_name, projects.id as project_id, projects.platform,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+            projects.name AS project_name, projects.id as project_id,
            projects.repo AS project_repo
         FROM symbols
     INNER JOIN sources ON sources.id = symbols.source_id
