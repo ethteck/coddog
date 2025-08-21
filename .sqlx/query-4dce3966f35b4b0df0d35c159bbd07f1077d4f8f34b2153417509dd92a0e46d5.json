@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO symbols (len, name, is_decompiled, symbol_idx, opcode_hash, equiv_hash, exact_hash, source_id)\n                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n                RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Bool",
+        "Int4",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4dce3966f35b4b0df0d35c159bbd07f1077d4f8f34b2153417509dd92a0e46d5"
+}

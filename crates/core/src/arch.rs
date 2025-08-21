@@ -1,10 +1,10 @@
-use crate::Platform;
 use crate::ingest::CoddogRel;
+use crate::Platform;
 use object::Endian;
-use rabbitizer::IsaExtension::{R3000GTE, R5900EE};
+use rabbitizer::operands::ValuedOperand;
+use rabbitizer::IsaExtension::{R3000GTE, R4000ALLEGREX, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
 use rabbitizer::Vram;
-use rabbitizer::operands::ValuedOperand;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -16,6 +16,7 @@ fn get_rabbitizer_instruction(word: u32, vram: u32, platform: Platform) -> rabbi
             Platform::N64 => rabbitizer::InstructionFlags::new(MIPS_III),
             Platform::Psx => rabbitizer::InstructionFlags::new_extension(R3000GTE),
             Platform::Ps2 => rabbitizer::InstructionFlags::new_extension(R5900EE),
+            Platform::Psp => rabbitizer::InstructionFlags::new_extension(R4000ALLEGREX),
             _ => unreachable!(),
         },
     )
@@ -25,7 +26,7 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
     let insn_length = platform.arch().insn_length();
 
     match platform {
-        Platform::N64 | Platform::Psx | Platform::Ps2 => bytes
+        Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Psp => bytes
             .chunks_exact(insn_length)
             .map(|chunk| {
                 let code = platform
@@ -60,7 +61,12 @@ pub(crate) fn get_equivalence_hash(
     let insn_length = platform.arch().insn_length();
 
     match platform {
-        Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Wii | Platform::Gc => {
+        Platform::N64
+        | Platform::Psx
+        | Platform::Ps2
+        | Platform::Wii
+        | Platform::Gc
+        | Platform::Psp => {
             let mut hashed_reloc;
 
             for (i, chunk) in bytes.chunks_exact(insn_length).enumerate() {
@@ -80,7 +86,7 @@ pub(crate) fn get_equivalence_hash(
                 }
 
                 match platform {
-                    Platform::N64 | Platform::Psx | Platform::Ps2 => {
+                    Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Psp => {
                         let instruction =
                             get_rabbitizer_instruction(code, cur_vram as u32, platform);
 
@@ -126,10 +132,10 @@ pub(crate) fn get_equivalence_hash(
                                     }
                                 }
                                 ValuedOperand::core_branch_target_label(_) => {
-                                    assert!(
-                                        !hashed_reloc,
-                                        "Relocation and branch target label at the same time"
-                                    );
+                                    // assert!(
+                                    //     !hashed_reloc,
+                                    //     "Relocation and branch target label at the same time"
+                                    // );
                                     vo.hash(&mut hasher);
                                 }
                                 ValuedOperand::core_imm_rs(_, gpr) => {

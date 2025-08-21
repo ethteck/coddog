@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO symbols (len, name, is_decompiled, symbol_idx, opcode_hash, equiv_hash, exact_hash, source_id)\n                SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::boolean[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bigint[], $8::bigint[])\n                RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8Array",
+        "TextArray",
+        "BoolArray",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9da5c889e4558e78841ff4ece97c8b78429f30fb660fc92b00ca671ac332404f"
+}

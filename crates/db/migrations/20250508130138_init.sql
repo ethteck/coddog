@@ -1,15 +1,15 @@
 CREATE TABLE IF NOT EXISTS projects
 (
-    id       BIGSERIAL PRIMARY KEY,
-    name     TEXT NOT NULL,
-    platform INT  NOT NULL,
-    repo     TEXT NULL
+    id   BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    repo TEXT NULL
 );
 
 CREATE TABLE IF NOT EXISTS versions
 (
     id         BIGSERIAL PRIMARY KEY,
     name       TEXT   NOT NULL,
+    platform   INT    NOT NULL,
     project_id BIGINT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
@@ -37,16 +37,16 @@ CREATE TABLE IF NOT EXISTS sources
 
 CREATE TABLE IF NOT EXISTS symbols
 (
-    id          BIGSERIAL PRIMARY KEY,
-    slug        TEXT   NOT NULL,
-    pos         BIGINT NOT NULL,
-    len         INT    NOT NULL,
-    name        TEXT   NOT NULL,
-    symbol_idx  INT    NOT NULL,
-    opcode_hash BIGINT NOT NULL,
-    equiv_hash  BIGINT NOT NULL,
-    exact_hash  BIGINT NOT NULL,
-    source_id   BIGINT NOT NULL,
+    id            BIGSERIAL PRIMARY KEY,
+    slug          TEXT    NOT NULL,
+    len           INT     NOT NULL,
+    name          TEXT    NOT NULL,
+    is_decompiled BOOLEAN NOT NULL DEFAULT FALSE,
+    symbol_idx    INT     NOT NULL,
+    opcode_hash   BIGINT  NOT NULL,
+    equiv_hash    BIGINT  NOT NULL,
+    exact_hash    BIGINT  NOT NULL,
+    source_id     BIGINT  NOT NULL,
     FOREIGN KEY (source_id) REFERENCES sources (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS opcode_hash_idx ON symbols (opcode_hash);

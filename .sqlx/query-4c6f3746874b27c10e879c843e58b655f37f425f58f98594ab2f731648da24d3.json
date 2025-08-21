@@ -1,17 +1,16 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE projects SET name = $1, platform = $2, repo = $3 WHERE id = $4",
+  "query": "UPDATE projects SET name = $1, repo = $2 WHERE id = $3",
   "describe": {
     "columns": [],
     "parameters": {
       "Left": [
         "Text",
-        "Int4",
         "Text",
         "Int8"
       ]
     },
     "nullable": []
   },
-  "hash": "014c8dd25f1f2b93033f85c51a1a284c610df76aae9eafa9966d80587341455c"
+  "hash": "4c6f3746874b27c10e879c843e58b655f37f425f58f98594ab2f731648da24d3"
 }
