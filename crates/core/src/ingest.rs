@@ -1,197 +1,92 @@
 use std::collections::BTreeMap;
 
-use anyhow::Result;
+use crate::{Platform, Symbol, SymbolDef};
+use anyhow::{Result, anyhow};
 use mapfile_parser::MapFile;
-use object::{
-    Endian, File, Object, ObjectSection, ObjectSymbol, Relocation, RelocationFlags,
-    RelocationTarget, elf,
-};
-
-use crate::ingest::CoddogRel::SymbolTarget;
-use crate::{Arch, Platform, Symbol, SymbolDef};
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum CoddogRel {
-    SymbolTarget(String, i64),
-}
-
-fn get_reloc_target(elf: &File, addr: u64, reloc: &Relocation, addend: i64) -> CoddogRel {
-    match reloc.target() {
-        RelocationTarget::Symbol(s) => {
-            let symbol = elf
-                .symbol_by_index(s)
-                .ok()
-                .and_then(|s| s.name().ok())
-                .unwrap_or_default();
-            SymbolTarget(symbol.to_string(), addend)
-        }
-        RelocationTarget::Absolute => {
-            panic!("Absolute reloc: {addr:#x} => ({addend})?");
-        }
-        _ => {
-            panic!("Unsupported reloc: {addr:#x} => ({addend})?");
-        }
-    }
-}
+use objdiff_core::diff::DiffObjConfig;
+use objdiff_core::obj::SymbolFlag;
 
 pub fn read_elf(
     platform: Platform,
     unmatched_funcs: &Option<Vec<String>>,
     elf_data: &[u8],
 ) -> Result<Vec<Symbol>> {
-    let file = File::parse(elf_data)?;
+    let config = DiffObjConfig::default();
 
-    let relocation_data = get_reloc_data(platform, &file)?;
+    let objdiff_obj = objdiff_core::obj::read::parse(elf_data, &config)
+        .map_err(|e| anyhow!("Failed to parse ELF object: {}", e))?;
 
-    let ret: Vec<Symbol> = file
-        .symbols()
+    let symbols = objdiff_obj
+        .symbols
+        .iter()
+        .filter(|s| {
+            s.size > 0
+                && s.section.is_some() // not extern
+                && s.kind == objdiff_core::obj::SymbolKind::Function
+                && !s.flags.contains(SymbolFlag::Hidden)
+                && !s.flags.contains(SymbolFlag::Ignored)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let ret: Vec<Symbol> = symbols
+        .iter()
         .enumerate()
-        .filter(|elem| elem.1.kind() == object::SymbolKind::Text)
-        .filter_map(|elem| {
-            let symbol = elem.1;
-            symbol.section_index().and_then(|i| {
-                file.section_by_index(i)
-                    .ok()
-                    .map(|section| (symbol, elem.0, section, &relocation_data[i.0]))
-            })
-        })
-        .filter_map(|(symbol, symbol_idx, section, relocation_data)| {
-            section
-                .data_range(symbol.address(), symbol.size())
-                .ok()
-                .flatten()
-                .map(|data| {
-                    (
-                        symbol,
-                        symbol_idx,
-                        relocation_data,
-                        data,
-                        section.address(),
-                        section.file_range().unwrap().0,
-                    )
-                })
-        })
-        .map(
-            |(symbol, symbol_idx, section_relocations, data, section_address, section_offset)| {
-                let offset = symbol.address() - section_address + section_offset;
+        .filter_map(|(idx, symbol)| {
+            let section_index = symbol
+                .section
+                .ok_or_else(|| anyhow!("Missing section for symbol"));
+            if let Err(e) = section_index {
+                eprintln!(
+                    "Error getting section index for symbol {}: {}",
+                    symbol.name, e
+                );
+                return None; // Skip this symbol if section is missing
+            }
+            let section_index = section_index.unwrap();
 
-                Symbol::new(SymbolDef {
-                    name: symbol.name().unwrap().to_string(),
+            let section = &objdiff_obj.sections[section_index];
+
+            // Get symbol data from the section
+            let data = section
+                .data_range(symbol.address, symbol.size as usize)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Symbol data out of bounds: {:#x}..{:#x}",
+                        symbol.address,
+                        symbol.address + symbol.size
+                    )
+                });
+
+            if let Err(e) = data {
+                eprintln!("Error getting symbol data: {}", e);
+                return None; // Skip this symbol if data is out of bounds
+            }
+            let data = data.unwrap();
+
+            let sect_relocations = section
+                .relocations
+                .iter()
+                .map(|r| (r.address, r.clone()))
+                .collect();
+
+            Some(Symbol::new(
+                SymbolDef {
+                    name: symbol.name.clone(),
                     bytes: data.to_vec(),
-                    vram: symbol.address() as usize,
+                    vram: symbol.address as usize,
                     is_decompiled: unmatched_funcs
                         .as_ref()
-                        .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
+                        .is_none_or(|fs| !fs.contains(&symbol.name)),
                     platform,
-                    relocations: section_relocations.clone(),
-                    symbol_idx,
-                })
-            },
-        )
+                    symbol_idx: idx,
+                },
+                &sect_relocations,
+            ))
+        })
         .collect();
+
     Ok(ret)
-}
-
-fn get_reloc_data(platform: Platform, file: &File) -> Result<Vec<BTreeMap<u64, CoddogRel>>> {
-    // Copied & modified from objdiff - thx
-
-    let mut relocation_data = Vec::with_capacity(file.sections().count() + 1);
-
-    let insn_length = platform.arch().insn_length();
-
-    match platform.arch() {
-        Arch::Mips => {
-            for obj_section in file.sections() {
-                let data = obj_section.data().unwrap_or_default();
-                let mut last_hi = None;
-                let mut last_hi_addend = 0;
-                let mut section_relocs = BTreeMap::new();
-
-                for (addr, reloc) in obj_section.relocations() {
-                    if !reloc.has_implicit_addend() {
-                        continue;
-                    }
-                    match reloc.flags() {
-                        RelocationFlags::Elf {
-                            r_type: elf::R_MIPS_HI16,
-                        } => {
-                            let code =
-                                data[addr as usize..addr as usize + insn_length].try_into()?;
-                            let addend = ((platform.endianness().read_u32_bytes(code) & 0x0000FFFF)
-                                << 16) as i32;
-                            last_hi = Some(addr);
-                            last_hi_addend = addend;
-                        }
-                        RelocationFlags::Elf {
-                            r_type: elf::R_MIPS_LO16,
-                        } => {
-                            let code =
-                                data[addr as usize..addr as usize + insn_length].try_into()?;
-                            let addend = (platform.endianness().read_u32_bytes(code) & 0x0000FFFF)
-                                as i16 as i32;
-                            let full_addend = (last_hi_addend + addend) as i64;
-
-                            let reloc_target = get_reloc_target(file, addr, &reloc, full_addend);
-
-                            if let Some(hi_addr) = last_hi.take() {
-                                section_relocs.insert(hi_addr, reloc_target.clone());
-                            }
-                            section_relocs.insert(addr, reloc_target);
-                        }
-                        RelocationFlags::Elf {
-                            r_type: elf::R_MIPS_26,
-                        } => {
-                            section_relocs
-                                .insert(addr, get_reloc_target(file, addr, &reloc, reloc.addend()));
-                        }
-                        _ => {
-                            last_hi = None;
-                        }
-                    }
-                }
-                let section_index = obj_section.index().0;
-                if section_index >= relocation_data.len() {
-                    relocation_data.resize_with(section_index + 1, Default::default);
-                }
-                relocation_data[section_index] = section_relocs;
-            }
-        }
-        Arch::Ppc => {
-            for obj_section in file.sections() {
-                let mut section_relocs = BTreeMap::new();
-                for (addr, reloc) in obj_section.relocations() {
-                    match reloc.flags() {
-                        RelocationFlags::Elf {
-                            r_type: elf::R_PPC_EMB_SDA21,
-                        } => {
-                            section_relocs
-                                .insert(addr, get_reloc_target(file, addr, &reloc, reloc.addend()));
-                        }
-                        RelocationFlags::Elf {
-                            r_type: elf::R_PPC_REL24,
-                        } => {
-                            section_relocs
-                                .insert(addr, get_reloc_target(file, addr, &reloc, reloc.addend()));
-                        }
-                        RelocationFlags::Elf {
-                            r_type: elf::R_PPC_ADDR32,
-                        } => {
-                            section_relocs
-                                .insert(addr, get_reloc_target(file, addr, &reloc, reloc.addend()));
-                        }
-                        _ => todo!("Unsupported relocation type: {:?}", reloc.flags()),
-                    }
-                }
-                let section_index = obj_section.index().0;
-                if section_index >= relocation_data.len() {
-                    relocation_data.resize_with(section_index + 1, Default::default);
-                }
-                relocation_data[section_index] = section_relocs;
-            }
-        }
-    }
-
-    Ok(relocation_data)
 }
 
 pub fn read_map(
@@ -214,17 +109,19 @@ pub fn read_map(
             let end = start + x.size as usize;
             let raw = &rom_bytes[start..end];
 
-            Symbol::new(SymbolDef {
-                name: x.name.clone(),
-                bytes: raw.to_vec(),
-                vram: x.vram as usize,
-                is_decompiled: unmatched_funcs
-                    .as_ref()
-                    .is_some_and(|fs| !fs.contains(&x.name)),
-                platform,
-                relocations: BTreeMap::default(),
-                symbol_idx: 0, // No symbol index in plain binaries
-            })
+            Symbol::new(
+                SymbolDef {
+                    name: x.name.clone(),
+                    bytes: raw.to_vec(),
+                    vram: x.vram as usize,
+                    is_decompiled: unmatched_funcs
+                        .as_ref()
+                        .is_some_and(|fs| !fs.contains(&x.name)),
+                    platform,
+                    symbol_idx: 0, // No symbol index in plain binaries
+                },
+                &BTreeMap::default(),
+            )
         })
         .collect();
     Ok(ret)

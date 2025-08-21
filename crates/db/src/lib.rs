@@ -230,7 +230,7 @@ pub async fn get_versions_for_project(
 }
 
 pub async fn create_object(tx: &mut Transaction<'_, Postgres>, bytes: &[u8]) -> Result<i64> {
-    let hash = blake3::hash(&bytes);
+    let hash = blake3::hash(bytes);
 
     let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
     let target_path = Path::new(&bin_path);
