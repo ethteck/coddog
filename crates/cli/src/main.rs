@@ -1,12 +1,12 @@
 #[cfg(feature = "db")]
 mod db;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
 use coddog_core::{
-    self as core, get_submatches, ingest::{read_elf, read_map}, Binary, Platform,
-    Symbol,
+    self as core, Binary, Platform, Symbol, get_submatches,
+    ingest::{read_elf, read_map},
 };
 
 use colored::*;

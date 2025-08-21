@@ -347,8 +347,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let window_size = std::env::var("DB_WINDOW_SIZE")
                 .expect("DB_WINDOW_SIZE must be set")
                 .parse::<usize>()?;
-            let supported_platforms =
-                vec![Platform::N64, Platform::Psx, Platform::Ps2, Platform::Psp];
+            let supported_platforms = [Platform::N64, Platform::Psx, Platform::Ps2, Platform::Psp];
 
             let decompme_pool = PgPool::connect(&decompme_db_url).await?;
 
@@ -397,7 +396,6 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
             let mut imported = 0;
             let mut asm_scratches = 0;
-            let mut object_scratches = 0;
             let mut no_symbols = 0;
             let mut cant_find_symbol = 0;
             let mut no_bytes = 0;
@@ -438,10 +436,10 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 }
                 let symbols = symbols.unwrap();
 
-                let from_object = !elf_object.source_asm_id.is_some();
+                let from_object = elf_object.source_asm_id.is_none();
 
                 if from_object {
-                    object_scratches += 1;
+                    //object_scratches += 1;
                 } else {
                     asm_scratches += 1;
                 }
@@ -477,7 +475,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
                 let matched_sym = matched_sym.unwrap();
 
-                if matched_sym.bytes.len() == 0 {
+                if matched_sym.bytes.is_empty() {
                     // return Err(anyhow!(
                     //     "Symbol {} in {} scratch {} has no bytes",
                     //     matched_sym.name,
