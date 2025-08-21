@@ -3,11 +3,11 @@ pub mod cluster;
 pub mod ingest;
 
 use crate::arch::get_opcodes;
-use crate::ingest::CoddogRel;
 use anyhow::Result;
 use editdistancek::edit_distance_bounded;
 use objdiff_core::diff::DiffObjConfig;
 use objdiff_core::diff::display::DiffText;
+use objdiff_core::obj::Relocation;
 use object::Endianness;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -148,12 +148,11 @@ pub struct SymbolDef {
     vram: usize,
     is_decompiled: bool,
     platform: Platform,
-    relocations: BTreeMap<u64, CoddogRel>,
     symbol_idx: usize,
 }
 
 impl Symbol {
-    pub fn new(def: SymbolDef) -> Symbol {
+    pub fn new(def: SymbolDef, relocations: &BTreeMap<u64, Relocation>) -> Symbol {
         let mut bytes = def.bytes;
 
         let insn_length = def.platform.arch().insn_length();
@@ -167,8 +166,7 @@ impl Symbol {
         bytes.hash(&mut hasher);
         let exact_hash = hasher.finish();
 
-        let equiv_hash =
-            arch::get_equivalence_hash(&bytes, def.vram, def.platform, &def.relocations);
+        let equiv_hash = arch::get_equivalence_hash(&bytes, def.vram, def.platform, relocations);
 
         let opcodes = get_opcodes(&bytes, def.platform);
         let mut hasher = DefaultHasher::new();

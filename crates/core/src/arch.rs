@@ -1,10 +1,10 @@
-use crate::ingest::CoddogRel;
 use crate::Platform;
+use objdiff_core::obj::Relocation;
 use object::Endian;
-use rabbitizer::operands::ValuedOperand;
 use rabbitizer::IsaExtension::{R3000GTE, R4000ALLEGREX, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
 use rabbitizer::Vram;
+use rabbitizer::operands::ValuedOperand;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -52,7 +52,7 @@ pub(crate) fn get_equivalence_hash(
     bytes: &[u8],
     vram: usize,
     platform: Platform,
-    relocations: &BTreeMap<u64, CoddogRel>,
+    relocations: &BTreeMap<u64, Relocation>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
 
@@ -78,7 +78,9 @@ pub(crate) fn get_equivalence_hash(
                 // Hash the unique id for the relocation entry rather than the specifics
                 if let Some(reloc) = relocations.get(&(cur_vram as u64)) {
                     let next_id = reloc_ids.len();
-                    let hash_id = *reloc_ids.entry(reloc).or_insert(next_id);
+                    let hash_id = *reloc_ids
+                        .entry((reloc.target_symbol, reloc.addend, reloc.flags))
+                        .or_insert(next_id);
                     hash_id.hash(&mut hasher);
                     hashed_reloc = true;
                 } else {
