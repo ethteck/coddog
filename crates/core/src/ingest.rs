@@ -79,7 +79,6 @@ pub fn read_elf(
                     name: symbol.name().unwrap().to_string(),
                     bytes: data.to_vec(),
                     vram: symbol.address() as usize,
-                    offset: offset as usize,
                     is_decompiled: unmatched_funcs
                         .as_ref()
                         .is_some_and(|fs| !fs.contains(&symbol.name().unwrap().to_string())),
@@ -219,7 +218,6 @@ pub fn read_map(
                 name: x.name.clone(),
                 bytes: raw.to_vec(),
                 vram: x.vram as usize,
-                offset: start,
                 is_decompiled: unmatched_funcs
                     .as_ref()
                     .is_some_and(|fs| !fs.contains(&x.name)),

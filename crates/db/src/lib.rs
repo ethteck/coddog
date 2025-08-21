@@ -1,3 +1,4 @@
+pub mod decompme;
 pub mod projects;
 pub mod symbols;
 
@@ -6,8 +7,9 @@ use coddog_core::Platform;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Pool, Postgres, Transaction, migrate::MigrateDatabase};
 use std::fmt::{Display, Formatter};
-use std::path::{Path, PathBuf};
-use std::{fs, fs::File, io::Read};
+use std::io::Write;
+use std::path::Path;
+use std::{fs, fs::File};
 
 const CHUNK_SIZE: usize = 100000;
 
@@ -15,8 +17,15 @@ const CHUNK_SIZE: usize = 100000;
 pub struct Project {
     pub id: i64,
     pub name: String,
-    pub platform: i32,
     pub repo: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Version {
+    pub id: i64,
+    pub name: String,
+    pub platform: i32,
+    pub project_id: i64,
 }
 
 impl Display for Project {
@@ -29,9 +38,9 @@ impl Display for Project {
 pub struct DBSymbol {
     pub id: i64,
     pub slug: String,
-    pub pos: i64,
     pub len: i32,
     pub name: String,
+    pub is_decompiled: bool,
     pub symbol_idx: i32,
     pub opcode_hash: i64,
     pub equiv_hash: i64,
@@ -51,8 +60,8 @@ pub struct DBSymbol {
 impl Display for DBSymbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "{} version {} (offset {:X})",
-            self.project_name, self.source_name, self.pos,
+            "{} version {} (idx {:X})",
+            self.project_name, self.source_name, self.object_symbol_idx,
         ))
     }
 }
@@ -68,6 +77,7 @@ impl DBSymbol {
 pub struct SymbolMetadata {
     pub slug: String,
     pub name: String,
+    pub is_decompiled: bool,
     pub len: i32,
     pub source_id: i64,
     pub source_name: String,
@@ -84,6 +94,7 @@ impl SymbolMetadata {
         Self {
             slug: symbol.slug.clone(),
             name: symbol.name.clone(),
+            is_decompiled: symbol.is_decompiled,
             len: symbol.get_num_insns(),
             source_id: symbol.source_id,
             source_name: symbol.source_name.clone(),
@@ -105,6 +116,7 @@ pub struct DBWindow {
     pub symbol_id: i64,
     pub symbol_slug: String,
     pub symbol_name: String,
+    pub symbol_is_decompiled: bool,
     pub symbol_len: i32,
     pub object_symbol_idx: i32,
     pub version_id: Option<i64>,
@@ -140,6 +152,7 @@ impl SubmatchResult {
             symbol: SymbolMetadata {
                 slug: window.symbol_slug.clone(),
                 name: window.symbol_name.clone(),
+                is_decompiled: window.symbol_is_decompiled,
                 len: num_insns,
                 source_id: window.source_id,
                 source_name: window.source_name.clone(),
@@ -183,11 +196,13 @@ pub async fn init() -> Result<PgPool> {
 pub async fn create_version(
     tx: &mut Transaction<'_, Postgres>,
     name: &str,
+    platform: i32,
     project_id: i64,
 ) -> Result<i64> {
     match sqlx::query!(
-        "INSERT INTO versions (name, project_id) VALUES ($1, $2) RETURNING id",
+        "INSERT INTO versions (name, platform, project_id) VALUES ($1, $2, $3) RETURNING id",
         name,
+        platform,
         project_id
     )
     .fetch_one(&mut **tx)
@@ -199,11 +214,23 @@ pub async fn create_version(
     }
 }
 
-pub async fn create_object(tx: &mut Transaction<'_, Postgres>, filepath: &PathBuf) -> Result<i64> {
-    let mut file = File::open(filepath)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    let hash = blake3::hash(&buffer);
+pub async fn get_versions_for_project(
+    conn: Pool<Postgres>,
+    project_id: i64,
+) -> Result<Vec<Version>> {
+    let rows = sqlx::query_as!(
+        Version,
+        "SELECT * FROM versions WHERE versions.project_id = $1",
+        project_id
+    )
+    .fetch_all(&conn)
+    .await?;
+
+    Ok(rows)
+}
+
+pub async fn create_object(tx: &mut Transaction<'_, Postgres>, bytes: &[u8]) -> Result<i64> {
+    let hash = blake3::hash(&bytes);
 
     let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
     let target_path = Path::new(&bin_path);
@@ -233,10 +260,14 @@ pub async fn create_object(tx: &mut Transaction<'_, Postgres>, filepath: &PathBu
             Some(r) => {
                 if !target_path.exists() {
                     fs::create_dir_all(target_path.parent().unwrap())?;
-                    match fs::copy(filepath, target_path.clone()) {
-                        Ok(_) => Ok(r.id),
-                        Err(e) => Err(anyhow::anyhow!("Error copying file: {}", e)),
-                    }
+                    // write bytes to target_path
+
+                    let mut file = File::create(&target_path)
+                        .map_err(|e| anyhow::anyhow!("Error creating file: {}", e))?;
+                    file.write_all(bytes)
+                        .map_err(|e| anyhow::anyhow!("Error writing to file: {}", e))?;
+
+                    Ok(r.id)
                 } else {
                     Ok(r.id)
                 }
@@ -256,20 +287,20 @@ pub async fn create_source(
     project_id: i64,
 ) -> Result<i64> {
     match sqlx::query!(
-        "INSERT INTO sources (name, source_link, object_id, version_id, project_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        "INSERT INTO sources (name, source_link, object_id, version_id, project_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id",
         name,
         *source_link,
         object_id,
         version_id,
         project_id
     )
-        .fetch_one(&mut **tx)
-        .await
-        .map_err(anyhow::Error::from)
+    .fetch_one(&mut **tx)
+    .await
+    .map_err(anyhow::Error::from)
     {
-        Ok(r) => {
-            Ok(r.id)
-        }
+        Ok(r) => Ok(r.id),
         Err(e) => Err(e),
     }
 }
@@ -390,12 +421,13 @@ joined_sequences AS (
         sources.name AS source_name,
         fs.symbol_id,
         symbols.name AS symbol_name,
+        symbols.is_decompiled,
         symbols.slug AS symbol_slug,
         symbols.len AS symbol_len,
         symbols.symbol_idx AS object_symbol_idx,
         versions.id AS \"version_id?\",
         versions.name AS \"version_name?\",
-        projects.platform,
+        versions.platform,
         projects.repo AS project_repo,
         objects.id AS object_id,
         objects.local_path AS object_path,
@@ -428,6 +460,7 @@ LIMIT $3 OFFSET $4
             symbol_id: row.symbol_id,
             symbol_slug: row.symbol_slug.clone(),
             symbol_name: row.symbol_name.clone(),
+            symbol_is_decompiled: row.is_decompiled,
             symbol_len: row.symbol_len,
             object_symbol_idx: row.object_symbol_idx,
             source_id: row.source_id,

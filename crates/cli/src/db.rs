@@ -1,7 +1,8 @@
 use crate::{DbCommands, MatchType, get_full_path};
 use anyhow::{Result, anyhow};
-use coddog_core::Platform;
 use coddog_core::ingest::read_elf;
+use coddog_core::{Platform, Symbol};
+use coddog_db::decompme::DecompMeScratch;
 use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest, SortDirection, SubmatchResultOrder};
@@ -10,7 +11,7 @@ use glob::glob;
 use inquire::Select;
 use itertools::Itertools;
 use pbr::ProgressBar;
-use sqlx::{Pool, Postgres};
+use sqlx::{PgPool, Pool, Postgres};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -179,7 +180,6 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 pool.clone(),
                 &CreateProjectRequest {
                     name: config.name.clone(),
-                    platform: platform as i32,
                     repo: config.repo.clone(),
                 },
             )
@@ -188,8 +188,13 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let mut tx = pool.begin().await?;
 
             for version in &config.versions {
-                let version_id =
-                    coddog_db::create_version(&mut tx, &version.fullname, project_id).await?;
+                let version_id = coddog_db::create_version(
+                    &mut tx,
+                    &version.fullname,
+                    platform as i32,
+                    project_id,
+                )
+                .await?;
 
                 let obj_files: Vec<PathBuf> = glob(&format!(
                     "{}/**/*.o",
@@ -210,7 +215,8 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
                 for obj_file in obj_files {
                     pb.inc();
-                    let object_id = coddog_db::create_object(&mut tx, &obj_file).await?;
+                    let obj_bytes = std::fs::read(&obj_file)?;
+                    let object_id = coddog_db::create_object(&mut tx, &obj_bytes).await?;
                     let source_id = coddog_db::create_source(
                         &mut tx,
                         obj_file.file_name().unwrap().to_str().unwrap(),
@@ -226,7 +232,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
                     if !symbols.is_empty() {
                         let symbol_ids =
-                            coddog_db::symbols::create(&mut tx, source_id, &symbols).await;
+                            coddog_db::symbols::create_many(&mut tx, source_id, &symbols).await;
 
                         for (symbol, id) in symbols.iter().zip(symbol_ids) {
                             let opcode_hashes = symbol.get_opcode_hashes(window_size);
@@ -333,6 +339,188 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 "{}",
                 results.to_string(*window_size, &project_map, &source_map, &symbol_map)
             );
+        }
+        DbCommands::ImportDecompme {} => {
+            let decompme_db_url = std::env::var("DECOMPME_DATABASE_URL")
+                .expect("DECOMPME_DATABASE_URL must be set")
+                .parse::<String>()?;
+            let window_size = std::env::var("DB_WINDOW_SIZE")
+                .expect("DB_WINDOW_SIZE must be set")
+                .parse::<usize>()?;
+            let supported_platforms =
+                vec![Platform::N64, Platform::Psx, Platform::Ps2, Platform::Psp];
+
+            let decompme_pool = PgPool::connect(&decompme_db_url).await?;
+
+            let scratches =
+                coddog_db::decompme::query_all_matched_scratches(decompme_pool.clone()).await?;
+            println!("Found {} scratches", scratches.len());
+
+            let scratches: Vec<DecompMeScratch> = scratches
+                .iter()
+                .filter(|scratch| {
+                    let platform = Platform::from_decompme_name(&scratch.platform);
+
+                    if platform.is_none() {
+                        return false;
+                    }
+                    let platform = platform.unwrap();
+                    supported_platforms.contains(&platform)
+                })
+                .cloned()
+                .collect::<Vec<DecompMeScratch>>();
+            println!(
+                "Filtered by platform to {} supported scratches",
+                scratches.len()
+            );
+
+            let pool = coddog_db::init().await?;
+
+            let project_id = coddog_db::projects::query_by_name(pool.clone(), "decomp.me").await?;
+            if project_id.is_empty() {
+                return Err(anyhow!("Project 'decomp.me' not found in the database"));
+            }
+            if project_id.len() > 1 {
+                return Err(anyhow!("Multiple projects found with the name 'decomp.me'"));
+            }
+            let project_id = project_id.first().unwrap().id;
+
+            println!("Using project ID: {}", project_id);
+
+            let versions = coddog_db::get_versions_for_project(pool.clone(), project_id).await?;
+
+            let mut tx = pool.begin().await?;
+
+            let mut pb = ProgressBar::new(scratches.len() as u64);
+            pb.format("[=>-]");
+            pb.message("Importing scratches ");
+
+            let mut imported = 0;
+            let mut asm_scratches = 0;
+            let mut object_scratches = 0;
+            let mut no_symbols = 0;
+            let mut cant_find_symbol = 0;
+            let mut no_bytes = 0;
+
+            for scratch in scratches {
+                pb.inc();
+
+                let platform = Platform::from_decompme_name(&scratch.platform).unwrap();
+
+                let version_id = versions
+                    .iter()
+                    .find(|v| v.platform == platform as i32)
+                    .map(|v| v.id)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Version for platform {} not found in the database",
+                            scratch.platform
+                        )
+                    })?;
+
+                let elf_object = coddog_db::decompme::query_scratch_assembly(
+                    decompme_pool.clone(),
+                    &scratch.slug,
+                )
+                .await?;
+
+                // let skips = vec!["996k9", "gDP9Y", "RiLDB", "gcxsC"];
+                //
+                // if skips.contains(&&*scratch.slug) {
+                //     continue;
+                // }
+
+                let symbols = read_elf(platform, &None, &elf_object.elf_object);
+
+                if let Err(e) = symbols {
+                    println!("Error reading ELF for scratch {}: {}", scratch.slug, e);
+                    continue;
+                }
+                let symbols = symbols.unwrap();
+
+                let from_object = !elf_object.source_asm_id.is_some();
+
+                if from_object {
+                    object_scratches += 1;
+                } else {
+                    asm_scratches += 1;
+                }
+
+                if symbols.is_empty() {
+                    // return Err(anyhow!(
+                    //     "No symbols found in {} scratch {}",
+                    //     scratch_type,
+                    //     scratch.slug
+                    // ));
+                    no_symbols += 1;
+                    continue;
+                }
+
+                let matched_sym = match symbols.len() {
+                    1 => Some(symbols.first().unwrap()),
+                    _ => symbols
+                        .iter()
+                        .find(|s| s.name == scratch.name || s.name == scratch.diff_label),
+                };
+
+                if matched_sym.is_none() {
+                    // anyhow!(
+                    //                 "No symbol found with name '{}' or '{}' in {} scratch {}",
+                    //                 scratch.name,
+                    //                 scratch.diff_label,
+                    //                 scratch_type,
+                    //                 scratch.slug
+                    //             )
+                    cant_find_symbol += 1;
+                    continue;
+                }
+
+                let matched_sym = matched_sym.unwrap();
+
+                if matched_sym.bytes.len() == 0 {
+                    // return Err(anyhow!(
+                    //     "Symbol {} in {} scratch {} has no bytes",
+                    //     matched_sym.name,
+                    //     scratch_type,
+                    //     scratch.slug
+                    // ));
+                    no_bytes += 1;
+                    continue;
+                }
+
+                let matched_sym = Symbol {
+                    is_decompiled: true,
+                    ..matched_sym.clone()
+                };
+
+                let object_id = coddog_db::create_object(&mut tx, &elf_object.elf_object).await?;
+
+                let source_id = coddog_db::create_source(
+                    &mut tx,
+                    format!("decomp.me scratch {}", scratch.slug).as_str(),
+                    &Some(format!("https://decomp.me/scratch/{}", scratch.slug)),
+                    object_id,
+                    Option::from(version_id),
+                    project_id,
+                )
+                .await?;
+
+                let symbol_id =
+                    coddog_db::symbols::create_one(&mut tx, source_id, &matched_sym).await;
+
+                let opcode_hashes = matched_sym.get_opcode_hashes(window_size);
+                coddog_db::create_symbol_window_hashes(&mut tx, &opcode_hashes, symbol_id).await?;
+                imported += 1;
+            }
+
+            tx.commit().await?;
+            pb.finish_print("Imported scratches successfully");
+
+            println!("Imported {} scratches", imported);
+            println!("ASM scratches: {}", asm_scratches);
+            println!("ASM scratches with no symbols: {}", no_symbols);
+            println!("ASM scratches can't find symbol: {}", cant_find_symbol);
+            println!("ASM scratches with no bytes: {}", no_bytes);
         }
     }
     Ok(())

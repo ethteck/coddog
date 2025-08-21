@@ -15,11 +15,6 @@
       },
       {
         "ordinal": 2,
-        "name": "platform",
-        "type_info": "Int4"
-      },
-      {
-        "ordinal": 3,
         "name": "repo",
         "type_info": "Text"
       }
@@ -28,7 +23,6 @@
       "Left": []
     },
     "nullable": [
-      false,
       false,
       false,
       true

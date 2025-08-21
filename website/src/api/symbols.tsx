@@ -1,6 +1,7 @@
 export type SymbolMetadata = {
   slug: string;
   name: string;
+  is_decompiled: boolean;
   len: number;
   source_id: number;
   source_name: string;
