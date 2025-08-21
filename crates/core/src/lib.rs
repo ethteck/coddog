@@ -17,6 +17,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 pub enum Arch {
     Mips,
     Ppc,
+    Aarch64,
 }
 
 impl Arch {
@@ -24,6 +25,7 @@ impl Arch {
         match self {
             Arch::Mips => 4,
             Arch::Ppc => 4,
+            Arch::Aarch64 => 4,
         }
     }
 }
@@ -36,6 +38,7 @@ pub enum Platform {
     Gc,
     Wii,
     Psp,
+    //Switch,
 }
 
 impl Platform {
@@ -47,6 +50,7 @@ impl Platform {
             "gc" => Some(Platform::Gc),
             "wii" => Some(Platform::Wii),
             "psp" => Some(Platform::Psp),
+            //"switch" => Some(Platform::Switch),
             _ => None,
         }
     }
@@ -62,7 +66,7 @@ impl Platform {
             "nds_arm9" => None, // TODO: needs arm support
             "n3ds" => None,   // TODO: needs arm support
             "irix" => None,   // TODO: not sure
-            "switch" => None, // TODO: needs arm support
+            "switch" => None, //"switch" => Some(Platform::Switch),
             "win32" => None,  // :frull:
             "msdos" => None,  // :frull:
             "saturn" => None, // TODO: needs sh2 support
@@ -92,6 +96,7 @@ impl Platform {
             Platform::Gc => Endianness::Big,
             Platform::Wii => Endianness::Big,
             Platform::Psp => Endianness::Little,
+            //Platform::Switch => Endianness::Little,
         }
     }
 
@@ -103,6 +108,7 @@ impl Platform {
             Platform::Gc => Arch::Ppc,
             Platform::Wii => Arch::Ppc,
             Platform::Psp => Arch::Mips,
+            //Platform::Switch => Arch::Aarch64,
         }
     }
 }
