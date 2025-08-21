@@ -30,6 +30,30 @@ impl Arch {
     }
 }
 
+// thanks https://stackoverflow.com/a/57578431
+macro_rules! back_to_enum {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+        $($(#[$vmeta:meta])* $vname:ident $(= $val:expr)?,)*
+    }) => {
+        $(#[$meta])*
+        $vis enum $name {
+            $($(#[$vmeta])* $vname $(= $val)?,)*
+        }
+
+        impl std::convert::TryFrom<i32> for $name {
+            type Error = ();
+
+            fn try_from(v: i32) -> Result<Self, Self::Error> {
+                match v {
+                    $(x if x == $name::$vname as i32 => Ok($name::$vname),)*
+                    _ => Err(()),
+                }
+            }
+        }
+    }
+}
+
+back_to_enum! {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Platform {
     N64,
@@ -39,6 +63,7 @@ pub enum Platform {
     Wii,
     Psp,
     //Switch,
+}
 }
 
 impl Platform {
@@ -72,18 +97,6 @@ impl Platform {
             "saturn" => None, // TODO: needs sh2 support
             "macosx" => None, // :frull:
             "macos9" => None, // :frull:
-            _ => None,
-        }
-    }
-
-    pub fn from_id(id: i32) -> Option<Self> {
-        match id {
-            0 => Some(Platform::N64),
-            1 => Some(Platform::Psx),
-            2 => Some(Platform::Ps2),
-            3 => Some(Platform::Gc),
-            4 => Some(Platform::Wii),
-            5 => Some(Platform::Psp),
             _ => None,
         }
     }
