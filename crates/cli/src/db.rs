@@ -495,7 +495,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
                 let source_id = coddog_db::create_source(
                     &mut tx,
-                    format!("decomp.me scratch {}", scratch.slug).as_str(),
+                    &scratch.slug,
                     &Some(format!("https://decomp.me/scratch/{}", scratch.slug)),
                     object_id,
                     Option::from(version_id),

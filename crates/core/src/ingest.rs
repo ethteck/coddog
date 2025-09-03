@@ -19,19 +19,23 @@ pub fn read_elf(
     let symbols = objdiff_obj
         .symbols
         .iter()
-        .filter(|s| {
-            s.size > 0
+        .enumerate()
+        .filter_map(|(idx, s)| {
+            if s.size > 0
                 && s.section.is_some() // not extern
                 && s.kind == objdiff_core::obj::SymbolKind::Function
                 && !s.flags.contains(SymbolFlag::Hidden)
                 && !s.flags.contains(SymbolFlag::Ignored)
+            {
+                Some((idx, s))
+            } else {
+                None
+            }
         })
-        .cloned()
         .collect::<Vec<_>>();
 
     let ret: Vec<Symbol> = symbols
         .iter()
-        .enumerate()
         .filter_map(|(idx, symbol)| {
             let section_index = symbol
                 .section
@@ -79,7 +83,7 @@ pub fn read_elf(
                         .as_ref()
                         .is_none_or(|fs| !fs.contains(&symbol.name)),
                     platform,
-                    symbol_idx: idx,
+                    symbol_idx: *idx,
                 },
                 &sect_relocations,
             ))
