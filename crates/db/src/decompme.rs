@@ -1,5 +1,3 @@
-//SELECT slug, target_assembly_id, platform, name FROM coreapp_scratch WHERE score = 0 AND max_score > 0
-
 use sqlx::{Pool, Postgres};
 
 #[derive(Clone, Debug, sqlx::FromRow)]

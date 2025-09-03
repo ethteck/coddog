@@ -178,7 +178,8 @@ pub async fn query_by_name(
     INNER JOIN objects ON objects.id = sources.object_id
     LEFT JOIN versions ON versions.id = sources.version_id
     INNER JOIN projects on sources.project_id = projects.id
-    WHERE symbols.name ILIKE $1",
+    WHERE strict_word_similarity (symbols.name, $1) > 0.5
+    ORDER BY strict_word_similarity (symbols.name, $1) DESC",
         query.name
     )
     .fetch_all(&conn)

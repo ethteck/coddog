@@ -1,0 +1,19 @@
+.logo {
+  display: inline-block;
+  align-items: center;
+  font-weight: 600; /* font-semibold */
+  letter-spacing: -0.025em; /* tracking-tight */
+}
+
+.logoIcon {
+  margin-right: 0.3em;
+  width: 0.8em;
+  height: 0.8em;
+  --frog-pupil: #292f33;
+  --frog-primary: rgb(216, 143, 75);
+  --frog-secondary: #e1c169;
+  --frog-nose: #561e77;
+  --accent: #951fd9;
+  --complement: #63d91f;
+  margin-bottom: -0.1em;
+}

@@ -12,7 +12,7 @@ An api for finding matching sequences of code among binaries
 
 [dependencies]
 axum = "0.8.4"
-axum-validated-extractors = "0.1.2"
+axum-validated-extractors = "0.2.0"
 coddog-db = { path = "../db" }
 coddog-core = { path = "../core" }
 dotenvy = "0.15.7"

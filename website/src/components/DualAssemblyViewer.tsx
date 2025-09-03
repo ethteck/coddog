@@ -2,7 +2,7 @@ import type React from 'react';
 import { useCallback, useMemo, useRef } from 'react';
 import type { AsmInsn, SymbolAsm, SymbolMetadata } from '../api/symbols.tsx';
 import styles from './DualAssemblyViewer.module.css';
-import { SymbolLabel } from './SymbolLabel.tsx';
+import { SymbolLabelOther } from './SymbolLabelOther.tsx';
 
 type DiffType = {
   opcodeMatch: boolean;
@@ -370,10 +370,10 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
     <div className={styles.dualAssemblyViewer}>
       <div className={styles.header}>
         <h3 className={styles.title}>
-          <SymbolLabel symbol={leftMetadata} link={true} />
+          <SymbolLabelOther symbol={leftMetadata} link={true} />
         </h3>
         <h3 className={styles.title}>
-          <SymbolLabel symbol={rightMetadata} link={true} />
+          <SymbolLabelOther symbol={rightMetadata} link={true} />
         </h3>
       </div>
 
