@@ -404,18 +404,9 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
         ret.push(insn);
     }
 
+    if ret.is_empty() {
+        return Err(anyhow::anyhow!("No assembly found for symbol"));
+    }
+
     Ok(ret)
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use crate::*;
-//     #[test]
-//     fn test_get_asm() {
-//         let path = "/home/ethteck/repos/papermario/ver/us/build/papermario.elf";
-//         let asm = get_asm_for_symbol(path, 469993).unwrap();
-//         for line in asm {
-//             println!("{}", line);
-//         }
-//     }
-// }

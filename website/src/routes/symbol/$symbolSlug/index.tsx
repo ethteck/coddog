@@ -1,20 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { fetchSymbolAsm, fetchSymbolMetadata } from '../../../api/symbols.tsx';
-import { SymbolLabel } from '../../../components/SymbolLabel.tsx';
+import { ExternalLink } from 'lucide-react';
+import {
+  fetchSymbolAsm,
+  fetchSymbolMetadata,
+  isDecompmeScratch,
+} from '../../../api/symbols.tsx';
+import DecompmeLogo from '../../../components/DecompmeLogo.tsx';
 import { SymbolMatches } from '../../../components/SymbolMatches.tsx';
-
-type SymbolMatchSearch = {
-  page: number;
-};
 
 export const Route = createFileRoute('/symbol/$symbolSlug/')({
   component: SymbolInfo,
-  validateSearch: (search: Record<string, unknown>): SymbolMatchSearch => {
-    return {
-      page: (search?.page as number) || 1,
-    };
-  },
 });
 
 function SymbolInfo() {
@@ -54,14 +50,31 @@ function SymbolInfo() {
   if (!queryAsm)
     return <div className="error">Query assembly data could not be loaded</div>;
 
+  const content = isDecompmeScratch(querySymbol) ? (
+    <>
+      <b>{querySymbol.name}</b> - <DecompmeLogo />
+    </>
+  ) : (
+    <>
+      <b>{querySymbol.name}</b> - {querySymbol.project_name}
+      {querySymbol.version_name ? ` (${querySymbol.version_name})` : ''}
+    </>
+  );
+
   return (
     <>
-      <h2>
-        <SymbolLabel symbol={querySymbol} link={false} />
-      </h2>
+      <h2>{content}</h2>
 
-      {querySymbol.project_repo && (
-        <Link to={querySymbol.project_repo}>Repo</Link>
+      {isDecompmeScratch(querySymbol) && (
+        <Link
+          href={`https://decomp.me/scratch/${querySymbol.source_name}`}
+          className="decomp-logo"
+        >
+          <DecompmeLogo />
+          {'/'}
+          {querySymbol.source_name}{' '}
+          <ExternalLink style={{ width: '16px', height: '16px' }} />
+        </Link>
       )}
 
       <SymbolMatches slug={symbolSlug} />

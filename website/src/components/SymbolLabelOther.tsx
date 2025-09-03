@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { isDecompmeScratch, type SymbolMetadata } from '../api/symbols.tsx';
 import DecompmeLogo from './DecompmeLogo.tsx';
 
-export function SymbolLabel({
+export function SymbolLabelOther({
   symbol,
   link = true,
   className = '',
@@ -13,11 +13,15 @@ export function SymbolLabel({
 }) {
   const content = isDecompmeScratch(symbol) ? (
     <>
-      <b>{symbol.name}</b> - <DecompmeLogo />/{symbol.source_name}
+      <b>{symbol.name}</b>
+      <br />
+      <DecompmeLogo />/{symbol.source_name}
     </>
   ) : (
     <>
-      <b>{symbol.name}</b> - {symbol.project_name}
+      <b>{symbol.name}</b>
+      <br />
+      {symbol.project_name}
       {symbol.version_name ? ` (${symbol.version_name})` : ''}
     </>
   );

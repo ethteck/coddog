@@ -13,6 +13,10 @@ export type SymbolMetadata = {
   platform: number;
 };
 
+export const isDecompmeScratch = (symbol: SymbolMetadata): boolean => {
+  return symbol.project_name === 'decomp.me';
+};
+
 export type SymbolMatchResult = {
   subtype: 'exact' | 'equivalent' | 'opcode';
   symbol: SymbolMetadata;
