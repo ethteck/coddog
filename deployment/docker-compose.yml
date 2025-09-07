@@ -38,6 +38,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - SERVER_ADDRESS=0.0.0.0:3000
+      - DB_WINDOW_SIZE=${DB_WINDOW_SIZE:-8}
+      - BIN_PATH="bins"
       - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       postgres:
@@ -46,8 +48,6 @@ services:
       - "3000:3000"
     networks:
       - coddog
-    volumes:
-      - .env:/app/.env:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
