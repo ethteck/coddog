@@ -16,7 +16,7 @@ services:
     networks:
       - coddog
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coddog} -d ${POSTGRES_DB:-coddog}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,9 +36,8 @@ services:
     container_name: coddog-api
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-coddog}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-coddog}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - SERVER_ADDRESS=0.0.0.0:3000
-      - DB_WINDOW_SIZE=${DB_WINDOW_SIZE:-8}
       - RUST_LOG=${RUST_LOG:-info}
     depends_on:
       postgres:
@@ -47,6 +46,8 @@ services:
       - "3000:3000"
     networks:
       - coddog
+    volumes:
+      - .env:/app/.env:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
       interval: 30s
