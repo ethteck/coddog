@@ -1,35 +1,19 @@
 # Multi-stage Docker build for coddog-api
-# Stage 1: Build dependencies (cache layer)
-FROM rust:1.89-slim AS chef
-RUN cargo install cargo-chef
+# Stage 1: Build application
+FROM rust:1.89-slim AS builder
 WORKDIR /app
 
-# Stage 2: Plan dependencies
-FROM chef AS planner
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-# Stage 3: Build dependencies (cached layer)
-FROM chef AS builder-deps
-COPY --from=planner /app/recipe.json recipe.json
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN cargo chef cook --release --recipe-path recipe.json
 
-# Stage 4: Build application
-FROM chef AS builder
-COPY --from=builder-deps /app/target target
-COPY --from=builder-deps /usr/local/cargo /usr/local/cargo
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Copy source code and build
 COPY . .
 RUN cargo build --release --bin coddog-api
 
-# Stage 5: Runtime image
+# Stage 2: Runtime image
 FROM ubuntu:24.04 AS runtime
 RUN apt-get update && apt-get install -y \
     ca-certificates \
