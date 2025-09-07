@@ -5,7 +5,6 @@
 
 # Documentation
 README.md
-DEPLOYMENT.md
 docs/
 *.md
 
@@ -47,18 +46,10 @@ __tests__/
 *.test.*
 *.spec.*
 
-# Backup files
-backups/
-*.backup
-*.bak
-
 # Docker files (when building)
 Dockerfile*
 docker-compose*.yml
 .dockerignore
-
-# Scripts (deployment scripts not needed in container)
-scripts/
 
 # Package manager lock files for unused platforms
 pnpm-lock.yaml
