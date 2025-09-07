@@ -23,21 +23,6 @@ RUN pnpm run build
 # Stage 2: Production server with nginx
 FROM nginx:alpine AS runtime
 
-# Create non-root user for nginx
-RUN addgroup -g 1001 -S nginx-user && \
-    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx-user -g nginx-user nginx-user
-
-# Fix ownership
-RUN chown -R nginx-user:nginx-user /usr/share/nginx/html && \
-    chown -R nginx-user:nginx-user /var/cache/nginx && \
-    chown -R nginx-user:nginx-user /var/log/nginx && \
-    chown -R nginx-user:nginx-user /etc/nginx/conf.d
-
-# Update nginx.conf to run as non-root
-RUN sed -i 's/user nginx;/user nginx-user;/' /etc/nginx/nginx.conf
-
-USER nginx-user
-
 # Copy built application
 COPY --from=builder /app/dist /usr/share/nginx/html
 
