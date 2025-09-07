@@ -15,7 +15,7 @@ anyhow = "1.0"
 editdistancek = "1.0.2"
 object = "0.37.3"
 objdiff-core = { git = "https://github.com/encounter/objdiff.git", tag = "v3.0.0", features = ["all"] }
-mapfile_parser = "2.9.4"
+mapfile_parser = "2.10.0"
 powerpc = "0.4"
 rabbitizer = { version = "2.0.0-alpha.4", features = ["all_extensions"] }
 serde = { version = "1.0", features = ["derive"] }
