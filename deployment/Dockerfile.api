@@ -17,7 +17,6 @@ RUN cargo build --release --bin coddog-api
 FROM ubuntu:24.04 AS runtime
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
