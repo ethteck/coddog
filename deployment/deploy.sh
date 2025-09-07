@@ -13,14 +13,14 @@ echo "Building cod.dog with git hash: $GIT_HASH"
 # Change to deployment directory
 cd "$(dirname "$0")"
 
-# Export environment variables for docker-compose
+# Export environment variables for docker compose
 export GIT_HASH="$GIT_HASH"
 export API_BASE_URL="${API_BASE_URL:-/api}"
 
 # Build and start the services
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 echo "Deployment complete!"
 echo "Git hash: $GIT_HASH"
