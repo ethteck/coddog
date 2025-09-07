@@ -4,6 +4,10 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+# Accept build arguments
+ARG GIT_HASH=unknown
+ARG API_BASE_URL=/api
+
 # Copy package files
 COPY website/package.json website/pnpm-lock.yaml ./
 COPY website/pnpm-workspace.yaml ./
@@ -16,6 +20,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY website/ .
+
+# Set environment variables for the build
+ENV GIT_HASH=${GIT_HASH}
+ENV API_BASE_URL=${API_BASE_URL}
 
 # Build the application
 RUN pnpm run build

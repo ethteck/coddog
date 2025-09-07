@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './config';
+
 export type SymbolMetadata = {
   slug: string;
   name: string;
@@ -50,7 +52,7 @@ export type SymbolAsm = {
 export const fetchSymbolsByName = async (
   symbol_name: string,
 ): Promise<Array<SymbolMetadata>> => {
-  const res = await fetch('http://localhost:3000/symbols', {
+  const res = await fetch(`${API_BASE_URL}/symbols`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: symbol_name }),
@@ -62,7 +64,7 @@ export const fetchSymbolsByName = async (
 export const fetchSymbolMetadata = async (
   symbol_slug: string,
 ): Promise<SymbolMetadata> => {
-  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}`);
+  const res = await fetch(`${API_BASE_URL}/symbols/${symbol_slug}`);
   if (!res.ok) throw new Error('Network response was not ok');
   return res.json();
 };
@@ -70,7 +72,7 @@ export const fetchSymbolMetadata = async (
 export const fetchSymbolMatches = async (
   symbol_slug: string,
 ): Promise<SymbolMatchResult[]> => {
-  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}/match`);
+  const res = await fetch(`${API_BASE_URL}/symbols/${symbol_slug}/match`);
   if (!res.ok) throw new Error('Network response was not ok');
   return res.json();
 };
@@ -78,7 +80,7 @@ export const fetchSymbolMatches = async (
 export const fetchSymbolAsm = async (
   symbol_slug: string,
 ): Promise<SymbolAsm> => {
-  const res = await fetch(`http://localhost:3000/symbols/${symbol_slug}/asm`);
+  const res = await fetch(`${API_BASE_URL}/symbols/${symbol_slug}/asm`);
   if (!res.ok) throw new Error('Network response was not ok');
   return await res.json();
 };
@@ -93,22 +95,19 @@ export const fetchSymbolSubmatches = async (
   sort_by = 'length',
   sort_dir = 'desc',
 ): Promise<SymbolSubmatchResults> => {
-  const res = await fetch(
-    `http://localhost:3000/symbols/${symbol_slug}/submatch`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        window_size: window_size,
-        start: start,
-        end: end,
-        page_num: page,
-        page_size: size,
-        sort_by: sort_by,
-        sort_dir: sort_dir,
-      }),
-    },
-  );
+  const res = await fetch(`${API_BASE_URL}/symbols/${symbol_slug}/submatch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      window_size: window_size,
+      start: start,
+      end: end,
+      page_num: page,
+      page_size: size,
+      sort_by: sort_by,
+      sort_dir: sort_dir,
+    }),
+  });
   if (!res.ok) throw new Error('Network response was not ok');
   return await res.json();
 };

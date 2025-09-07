@@ -60,6 +60,9 @@ services:
     build:
       context: ..
       dockerfile: deployment/Dockerfile.frontend
+      args:
+        GIT_HASH: ${GIT_HASH:-unknown}
+        API_BASE_URL: ${API_BASE_URL:-/api}
     container_name: coddog-frontend
     restart: unless-stopped
     volumes:
