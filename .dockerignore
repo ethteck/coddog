@@ -1,0 +1,81 @@
+# Git and version control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+DEPLOYMENT.md
+docs/
+*.md
+
+# Development files
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts and cache
+target/
+dist/
+build/
+node_modules/
+.cache/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# Backup files
+backups/
+*.backup
+*.bak
+
+# Docker files (when building)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Scripts (deployment scripts not needed in container)
+scripts/
+
+# Package manager lock files for unused platforms
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Rust specific
+**/*.rs.bk
+Cargo.lock.bak
+
+# Frontend specific (when building API)
+website/node_modules/
+website/dist/
+website/.cache/
+
+# API specific (when building frontend)
+crates/
+Cargo.toml
+Cargo.lock
