@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn test_simple_ppc() {
         let elf_data = include_bytes!("../../../test/simple_ppc.o").to_vec();
-        let symbols = read_elf(Platform::Gc, &None, &elf_data).unwrap();
+        let symbols = read_elf(Platform::GcWii, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_simple_ppc_linked() {
         let elf_data = include_bytes!("../../../test/simple_ppc_linked.o").to_vec();
-        let symbols = read_elf(Platform::Gc, &None, &elf_data).unwrap();
+        let symbols = read_elf(Platform::GcWii, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
