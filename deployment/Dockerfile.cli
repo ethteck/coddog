@@ -29,7 +29,8 @@ WORKDIR /app
 # Copy the binary
 COPY --from=builder /app/target/release/coddog-cli /app/coddog-cli
 
-# Create a directory for mounting project files
+# Create a directory for mounting project files and binaries
 RUN mkdir -p /app/projects
+RUN mkdir -p /app/bins
 
 CMD ["./coddog-cli", "--help"]

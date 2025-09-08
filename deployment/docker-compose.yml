@@ -95,6 +95,7 @@ services:
     volumes:
       # Mount directory for accessing project files
       - ${PROJECTS_PATH:-./projects}:/app/projects
+      - bins:/app/bins
     networks:
       - coddog
     profiles:
@@ -109,4 +110,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  bins:
     driver: local
