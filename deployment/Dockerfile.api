@@ -1,0 +1,36 @@
+# Multi-stage Docker build for coddog-api
+# Stage 1: Build application
+FROM rust:1.89-slim AS builder
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy source code and build
+COPY . .
+RUN cargo build --release --bin coddog-api
+
+# Stage 2: Runtime image
+FROM ubuntu:24.04 AS runtime
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1001 coddog
+USER coddog
+WORKDIR /app
+
+# Copy the binary
+COPY --from=builder /app/target/release/coddog-api /app/coddog-api
+
+# Copy database migrations
+COPY --from=builder /app/crates/db/migrations /app/migrations
+
+# Expose port
+EXPOSE 3000
+
+CMD ["./coddog-api"]

@@ -1,0 +1,39 @@
+# Multi-stage Docker build for frontend
+# Stage 1: Build the React app
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# Accept build arguments
+ARG GIT_HASH=unknown
+ARG API_BASE_URL=/api
+
+# Copy package files
+COPY website/package.json website/pnpm-lock.yaml ./
+COPY website/pnpm-workspace.yaml ./
+
+# Install pnpm
+RUN npm install -g pnpm@latest
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY website/ .
+
+# Set environment variables for the build
+ENV GIT_HASH=${GIT_HASH}
+ENV API_BASE_URL=${API_BASE_URL}
+
+# Build the application
+RUN pnpm run build
+
+# Stage 2: Production server with nginx
+FROM nginx:alpine AS runtime
+
+# Copy built application
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

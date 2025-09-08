@@ -317,7 +317,8 @@ impl AsmInsn {
 }
 
 pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmInsn>> {
-    let object_bytes = std::fs::read(object_path).expect("Failed to read object file");
+    let object_bytes = std::fs::read(object_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read object file at {}: {}", object_path, e))?;
 
     let diff_config = DiffObjConfig {
         analyze_data_flow: false,

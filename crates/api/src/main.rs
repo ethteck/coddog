@@ -23,7 +23,7 @@ use validator::{Validate, ValidationError};
 
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().expect("No .env file found");
+    dotenvy::dotenv().ok();
 
     let server_address = std::env::var("SERVER_ADDRESS").unwrap_or("127.0.0.1:3000".to_string());
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
