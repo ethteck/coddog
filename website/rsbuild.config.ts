@@ -37,7 +37,7 @@ export default defineConfig({
     define: {
       'process.env.GIT_HASH': JSON.stringify(getGitHash()),
       'process.env.API_BASE_URL': JSON.stringify(
-        process.env.API_BASE_URL || '/api',
+        process.env.API_BASE_URL || 'http://localhost:3000',
       ),
     },
   },

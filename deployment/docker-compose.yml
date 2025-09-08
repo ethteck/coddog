@@ -79,6 +79,27 @@ services:
       timeout: 10s
       retries: 3
 
+  # Coddog CLI (for database operations)
+  cli:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.cli
+    container_name: coddog-cli
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - DB_WINDOW_SIZE=${DB_WINDOW_SIZE:-8}
+      - RUST_LOG=${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount directory for accessing project files
+      - ${PROJECTS_PATH:-./projects}:/app/projects
+    networks:
+      - coddog
+    profiles:
+      - cli
+
 networks:
   coddog:
     driver: bridge
