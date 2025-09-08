@@ -36,7 +36,7 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
                 instruction.opcode() as u16
             })
             .collect(),
-        Platform::Gc | Platform::Wii => bytes
+        Platform::GcWii => bytes
             .chunks_exact(insn_length)
             .map(|c| {
                 powerpc::Opcode::detect(
@@ -61,12 +61,7 @@ pub(crate) fn get_equivalence_hash(
     let insn_length = platform.arch().insn_length();
 
     match platform {
-        Platform::N64
-        | Platform::Psx
-        | Platform::Ps2
-        | Platform::Wii
-        | Platform::Gc
-        | Platform::Psp => {
+        Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::GcWii | Platform::Psp => {
             let mut hashed_reloc;
 
             for (i, chunk) in bytes.chunks_exact(insn_length).enumerate() {
@@ -247,7 +242,7 @@ pub(crate) fn get_equivalence_hash(
                             }
                         }
                     }
-                    Platform::Gc | Platform::Wii => {
+                    Platform::GcWii => {
                         let instruction =
                             powerpc::Ins::new(code, powerpc::Extensions::gekko_broadway());
 

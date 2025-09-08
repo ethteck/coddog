@@ -59,8 +59,7 @@ pub enum Platform {
     N64,
     Psx,
     Ps2,
-    Gc,
-    Wii,
+    GcWii,
     Psp,
     //Switch,
 }
@@ -72,8 +71,7 @@ impl Platform {
             "n64" => Some(Platform::N64),
             "psx" => Some(Platform::Psx),
             "ps2" => Some(Platform::Ps2),
-            "gc" => Some(Platform::Gc),
-            "wii" => Some(Platform::Wii),
+            "gc_wii" => Some(Platform::GcWii),
             "psp" => Some(Platform::Psp),
             //"switch" => Some(Platform::Switch),
             _ => None,
@@ -86,17 +84,17 @@ impl Platform {
             "ps1" => Some(Platform::Psx),
             "ps2" => Some(Platform::Ps2),
             "psp" => Some(Platform::Psp),
-            "gc_wii" => None, // TODO: not sure how to distinguish between gc/wii - do we need to?
-            "gba" => None,    // TODO: needs arm support
+            "gc_wii" => Some(Platform::GcWii),
+            "gba" => None,      // TODO: needs arm support
             "nds_arm9" => None, // TODO: needs arm support
-            "n3ds" => None,   // TODO: needs arm support
-            "irix" => None,   // TODO: not sure
-            "switch" => None, //"switch" => Some(Platform::Switch),
-            "win32" => None,  // :frull:
-            "msdos" => None,  // :frull:
-            "saturn" => None, // TODO: needs sh2 support
-            "macosx" => None, // :frull:
-            "macos9" => None, // :frull:
+            "n3ds" => None,     // TODO: needs arm support
+            "irix" => None,     // TODO: not sure
+            "switch" => None,   //"switch" => Some(Platform::Switch),
+            "win32" => None,    // :frull:
+            "msdos" => None,    // :frull:
+            "saturn" => None,   // TODO: needs sh2 support
+            "macosx" => None,   // :frull:
+            "macos9" => None,   // :frull:
             _ => None,
         }
     }
@@ -106,8 +104,7 @@ impl Platform {
             Platform::N64 => Endianness::Big,
             Platform::Psx => Endianness::Little,
             Platform::Ps2 => Endianness::Little,
-            Platform::Gc => Endianness::Big,
-            Platform::Wii => Endianness::Big,
+            Platform::GcWii => Endianness::Big,
             Platform::Psp => Endianness::Little,
             //Platform::Switch => Endianness::Little,
         }
@@ -118,8 +115,7 @@ impl Platform {
             Platform::N64 => Arch::Mips,
             Platform::Psx => Arch::Mips,
             Platform::Ps2 => Arch::Mips,
-            Platform::Gc => Arch::Ppc,
-            Platform::Wii => Arch::Ppc,
+            Platform::GcWii => Arch::Ppc,
             Platform::Psp => Arch::Mips,
             //Platform::Switch => Arch::Aarch64,
         }

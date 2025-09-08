@@ -347,7 +347,13 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let window_size = std::env::var("DB_WINDOW_SIZE")
                 .expect("DB_WINDOW_SIZE must be set")
                 .parse::<usize>()?;
-            let supported_platforms = [Platform::N64, Platform::Psx, Platform::Ps2, Platform::Psp];
+            let supported_platforms = [
+                Platform::N64,
+                Platform::Psx,
+                Platform::Ps2,
+                Platform::Psp,
+                Platform::GcWii,
+            ];
 
             let decompme_pool = PgPool::connect(&decompme_db_url).await?;
 
