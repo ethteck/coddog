@@ -46,6 +46,8 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    volumes:
+      - bins:/app/bins
     networks:
       - coddog
     healthcheck:
@@ -96,7 +98,6 @@ services:
     volumes:
       # Mount directory for accessing project files
       - ${PROJECTS_PATH:-./projects}:/app/projects
-      - bins:/app/bins
     networks:
       - coddog
     profiles:
