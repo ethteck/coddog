@@ -89,7 +89,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - DB_WINDOW_SIZE=${DB_WINDOW_SIZE:-8}
       - RUST_LOG=${RUST_LOG:-info}
-      - BIN_PATH="/app/bins"
+      - BIN_PATH=/app/bins
     depends_on:
       postgres:
         condition: service_healthy
