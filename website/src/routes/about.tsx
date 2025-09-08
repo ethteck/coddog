@@ -43,10 +43,11 @@ function AboutPage() {
             program on a bell curve. There are several that are trivial to
             decompile, a large amount that are non-trivial but not too
             difficult, and some portion that are quite difficult. As the number
-            of remaining unmatched functions nears 0, remainder inevitably
-            contain a higher proportion of difficult cases. Additionally, these
-            functions are typically larger in size and far less likely to have
-            full duplicates. So what can be done to help decompile these?
+            of remaining unmatched functions nears 0, the remaining functions
+            inevitably contain a higher proportion of difficult cases.
+            Additionally, these functions are typically larger in size and far
+            less likely to have full duplicates. So what can be done to help
+            decompile these?
           </p>
           <p>
             In 2022, after talking with some friends in the decomp space, I
