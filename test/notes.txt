@@ -4,3 +4,7 @@ mips-linux-gnu-objcopy -Obinary simple_mips_linked.o simple_mips_raw.bin
 
 wine ~/repos/decomp.me/backend/compilers/gc_wii/mwcc_247_108/mwcceppc.exe -c -O2 -nostdinc -fp hardware -nodefaults simple.c -o simple_ppc.o
 wine ~/repos/decomp.me/backend/compilers/gc_wii/mwcc_247_108/mwldeppc.exe -fp hardware -nodefaults -lcf simple.lcf -r simple_ppc.o -o simple_ppc_linked.o
+
+/home/ethteck/repos/decomp.me/cromper/compilers/gba/agbcc/bin/agbcc simple.c -O0 -o simple_gba.s
+arm-none-eabi-as simple_gba.s -mcpu=arm7tdmi -mthumb-interwork -o simple_gba.o
+arm-none-eabi-ld -T simple.ld simple_gba.o -Map simple_gba.map -o simple_gba_linked.o

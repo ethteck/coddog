@@ -61,6 +61,20 @@ function SymbolInfo() {
     </>
   );
 
+  const submatchesAvailable = querySymbol.len > 3;
+
+  const submatchContent = submatchesAvailable ? (
+    <Link
+      to="/symbol/$symbolSlug/submatch"
+      params={{ symbolSlug }}
+      className="button"
+    >
+      Search submatches
+    </Link>
+  ) : (
+    <p className="info">This symbol is too short to contain submatches.</p>
+  );
+
   return (
     <>
       <h2>{content}</h2>
@@ -79,13 +93,7 @@ function SymbolInfo() {
 
       <SymbolMatches slug={symbolSlug} />
 
-      <Link
-        to="/symbol/$symbolSlug/submatch"
-        params={{ symbolSlug }}
-        className="button"
-      >
-        Search submatches
-      </Link>
+      {submatchContent}
     </>
   );
 }
