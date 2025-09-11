@@ -418,7 +418,7 @@ dependencies = [
  "powerpc",
  "rabbitizer",
  "serde",
- "unarm 1.9.1",
+ "unarm",
 ]
 
 [[package]]
@@ -1880,7 +1880,7 @@ dependencies = [
  "time",
  "typed-arena",
  "typed-path",
- "unarm 1.9.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "unarm",
  "winapi",
  "yaxpeax-arch",
  "yaxpeax-arm",
@@ -3388,13 +3388,9 @@ checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
 
 [[package]]
 name = "unarm"
-version = "1.9.1"
-
-[[package]]
-name = "unarm"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9033ae833829781ce34dc65b6a2ca6dd43a20969c61a75d1e47e23d9d08959e3"
+checksum = "9ea856cd3ee3abd1b585bbcdc6f8a4b356f43558fae98d76e502be868dc40e90"
 
 [[package]]
 name = "unicase"
