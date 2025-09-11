@@ -17,7 +17,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 pub enum Arch {
     Mips,
     Ppc,
-    Aarch64,
+    Thumb,
 }
 
 impl Arch {
@@ -25,7 +25,7 @@ impl Arch {
         match self {
             Arch::Mips => 4,
             Arch::Ppc => 4,
-            Arch::Aarch64 => 4,
+            Arch::Thumb => 2,
         }
     }
 }
@@ -61,6 +61,9 @@ pub enum Platform {
     Ps2,
     GcWii,
     Psp,
+    Gba,
+    Nds,
+    N3ds,
     //Switch,
 }
 }
@@ -83,18 +86,18 @@ impl Platform {
             "n64" => Some(Platform::N64),
             "ps1" => Some(Platform::Psx),
             "ps2" => Some(Platform::Ps2),
-            "psp" => Some(Platform::Psp),
             "gc_wii" => Some(Platform::GcWii),
-            "gba" => None,      // TODO: needs arm support
-            "nds_arm9" => None, // TODO: needs arm support
-            "n3ds" => None,     // TODO: needs arm support
-            "irix" => None,     // TODO: not sure
-            "switch" => None,   //"switch" => Some(Platform::Switch),
-            "win32" => None,    // :frull:
-            "msdos" => None,    // :frull:
-            "saturn" => None,   // TODO: needs sh2 support
-            "macosx" => None,   // :frull:
-            "macos9" => None,   // :frull:
+            "psp" => Some(Platform::Psp),
+            "gba" => Some(Platform::Gba),
+            "nds_arm9" => Some(Platform::Nds),
+            "n3ds" => Some(Platform::N3ds),
+            "switch" => None, //Some(Platform::Switch), // TODO: needs aarch64 support
+            "irix" => None,   // TODO: not sure
+            "saturn" => None, // TODO: needs sh2 support
+            "win32" => None,  // :frull:
+            "msdos" => None,  // :frull:
+            "macosx" => None, // :frull:
+            "macos9" => None, // :frull:
             _ => None,
         }
     }
@@ -106,6 +109,9 @@ impl Platform {
             Platform::Ps2 => Endianness::Little,
             Platform::GcWii => Endianness::Big,
             Platform::Psp => Endianness::Little,
+            Platform::Gba => Endianness::Little,
+            Platform::Nds => Endianness::Little,
+            Platform::N3ds => Endianness::Little,
             //Platform::Switch => Endianness::Little,
         }
     }
@@ -117,6 +123,9 @@ impl Platform {
             Platform::Ps2 => Arch::Mips,
             Platform::GcWii => Arch::Ppc,
             Platform::Psp => Arch::Mips,
+            Platform::Gba => Arch::Thumb,
+            Platform::Nds => Arch::Thumb,
+            Platform::N3ds => Arch::Thumb,
             //Platform::Switch => Arch::Aarch64,
         }
     }
@@ -182,8 +191,9 @@ impl Symbol {
         let exact_hash = hasher.finish();
 
         let equiv_hash = arch::get_equivalence_hash(&bytes, def.vram, def.platform, relocations);
+        let vram = def.vram;
 
-        let opcodes = get_opcodes(&bytes, def.platform);
+        let opcodes = get_opcodes(&bytes, def.platform, vram, relocations);
         let mut hasher = DefaultHasher::new();
         opcodes.hash(&mut hasher);
         let opcode_hash = hasher.finish();
@@ -192,7 +202,7 @@ impl Symbol {
             name: def.name,
             bytes,
             opcodes,
-            vram: def.vram,
+            vram,
             is_decompiled: def.is_decompiled,
             exact_hash,
             equiv_hash,
@@ -346,9 +356,7 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
                         }
                         return Ok(());
                     }
-                    DiffText::Basic(_) | DiffText::Line(_) | DiffText::Spacing(_) => {
-                        // Ignore these variants as requested
-                    }
+                    DiffText::Basic(_) | DiffText::Line(_) | DiffText::Spacing(_) => {}
                     DiffText::Address(addr) => {
                         if let Some(ref mut insn) = current_insn {
                             insn.address = Some(addr.to_string());

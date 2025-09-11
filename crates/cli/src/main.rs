@@ -10,7 +10,7 @@ use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use glob::glob;
 use inquire::Select;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -525,7 +525,7 @@ async fn main() -> Result<()> {
             let platform =
                 platform.ok_or_else(|| anyhow!("No platform found in provided configs"))?;
 
-            let opcodes = core::arch::get_opcodes(&query_bin_data, platform);
+            let opcodes = core::arch::get_opcodes(&query_bin_data, platform, 0, &BTreeMap::new());
             for (i, hash) in core::get_hashes(&opcodes, window_size).iter().enumerate() {
                 if let Some((project_name, version_name, symbol)) = symbol_hashes.get(hash)
                     && opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes

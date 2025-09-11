@@ -499,13 +499,6 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let window_size = std::env::var("DB_WINDOW_SIZE")
                 .expect("DB_WINDOW_SIZE must be set")
                 .parse::<usize>()?;
-            let supported_platforms = [
-                Platform::N64,
-                Platform::Psx,
-                Platform::Ps2,
-                Platform::Psp,
-                Platform::GcWii,
-            ];
 
             let decompme_pool = PgPool::connect(&decompme_db_url).await?;
 
@@ -518,11 +511,7 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 .filter(|scratch| {
                     let platform = Platform::from_decompme_name(&scratch.platform);
 
-                    if platform.is_none() {
-                        return false;
-                    }
-                    let platform = platform.unwrap();
-                    supported_platforms.contains(&platform)
+                    platform.is_some()
                 })
                 .cloned()
                 .collect::<Vec<DecompMeScratch>>();

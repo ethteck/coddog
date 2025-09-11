@@ -133,11 +133,14 @@ pub fn read_map(
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::PathBuf};
+
     use super::*;
 
     #[test]
     fn test_simple_mips() {
-        let elf_data = include_bytes!("../../../test/simple_mips.o").to_vec();
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let elf_data = fs::read(d.join("../../test/simple_mips.o")).unwrap();
         let symbols = read_elf(Platform::N64, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
@@ -162,7 +165,8 @@ mod tests {
 
     #[test]
     fn test_simple_mips_linked() {
-        let elf_data = include_bytes!("../../../test/simple_mips_linked.o").to_vec();
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let elf_data = fs::read(d.join("../../test/simple_mips_linked.o")).unwrap();
         let symbols = read_elf(Platform::N64, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
@@ -188,9 +192,10 @@ mod tests {
 
     #[test]
     fn test_simple_mips_map() {
-        let rom_bytes = include_bytes!("../../../test/simple_mips_raw.bin").to_vec();
-        let map_str = include_str!("../../../test/simple_mips.map");
-        let symbols = read_map(Platform::N64, None, rom_bytes, map_str).unwrap();
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let rom_bytes = fs::read(d.join("../../test/simple_mips_raw.bin")).unwrap();
+        let map_str = fs::read_to_string(d.join("../../test/simple_mips.map")).unwrap();
+        let symbols = read_map(Platform::N64, None, rom_bytes, &map_str).unwrap();
         assert!(!symbols.is_empty());
 
         let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
@@ -215,7 +220,8 @@ mod tests {
 
     #[test]
     fn test_simple_ppc() {
-        let elf_data = include_bytes!("../../../test/simple_ppc.o").to_vec();
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let elf_data = fs::read(d.join("../../test/simple_ppc.o")).unwrap();
         let symbols = read_elf(Platform::GcWii, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
@@ -240,7 +246,8 @@ mod tests {
 
     #[test]
     fn test_simple_ppc_linked() {
-        let elf_data = include_bytes!("../../../test/simple_ppc_linked.o").to_vec();
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let elf_data = fs::read(d.join("../../test/simple_ppc_linked.o")).unwrap();
         let symbols = read_elf(Platform::GcWii, &None, &elf_data).unwrap();
         assert!(!symbols.is_empty());
 
@@ -255,6 +262,32 @@ mod tests {
         assert_eq!(tf1.opcode_hash, tf3.opcode_hash);
         assert_ne!(tf1.equiv_hash, tf3.equiv_hash);
         assert_eq!(tf1.exact_hash, tf3.exact_hash);
+
+        let math_op_1 = symbols.iter().find(|s| s.name == "math_op_1").unwrap();
+        let math_op_1_dup = symbols.iter().find(|s| s.name == "math_op_1_dup").unwrap();
+        assert_eq!(math_op_1.opcode_hash, math_op_1_dup.opcode_hash);
+        assert_eq!(math_op_1.equiv_hash, math_op_1_dup.equiv_hash);
+        assert_eq!(math_op_1.exact_hash, math_op_1_dup.exact_hash);
+    }
+
+    #[test]
+    fn test_simple_gba() {
+        let d: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let elf_data = fs::read(d.join("../../test/simple_gba.o")).unwrap();
+        let symbols = read_elf(Platform::Gba, &None, &elf_data).unwrap();
+        assert!(!symbols.is_empty());
+
+        let tf1 = symbols.iter().find(|s| s.name == "test_1").unwrap();
+        let tf2 = symbols.iter().find(|s| s.name == "test_2").unwrap();
+        let tf3 = symbols.iter().find(|s| s.name == "test_3").unwrap();
+
+        assert_eq!(tf1.opcode_hash, tf2.opcode_hash);
+        assert_eq!(tf1.equiv_hash, tf2.equiv_hash);
+        assert_ne!(tf1.exact_hash, tf2.exact_hash); // has data inside the code, so the exact hash differs
+
+        assert_eq!(tf1.opcode_hash, tf3.opcode_hash);
+        assert_ne!(tf1.equiv_hash, tf3.equiv_hash);
+        assert_ne!(tf1.exact_hash, tf3.exact_hash); // has data inside the code, so the exact hash differs
 
         let math_op_1 = symbols.iter().find(|s| s.name == "math_op_1").unwrap();
         let math_op_1_dup = symbols.iter().find(|s| s.name == "math_op_1_dup").unwrap();

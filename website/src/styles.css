@@ -465,7 +465,6 @@ a:hover {
    UTILITY CLASSES
 =========================================== */
 
-/* Error states */
 .error {
   color: var(--color-accent);
   padding: var(--spacing-md);
@@ -476,12 +475,21 @@ a:hover {
   font-weight: 500;
 }
 
-/* Loading states */
 .loading {
   color: var(--color-text-muted);
   text-align: center;
   padding: var(--spacing-lg);
   font-style: italic;
+}
+
+.info {
+  color: var(--color-text-secondary);
+  padding: var(--spacing-md);
+  background: var(--color-background-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin: var(--spacing-md) 0;
+  font-weight: 500;
 }
 
 /* Layout utilities */

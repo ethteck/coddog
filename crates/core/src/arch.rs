@@ -1,9 +1,9 @@
-use crate::Platform;
+use crate::{Arch, Platform};
 use objdiff_core::obj::Relocation;
 use object::Endian;
+use object::elf::{R_ARM_ABS8, R_ARM_ABS16, R_ARM_ABS32, R_ARM_REL32, R_ARM_SBREL32};
 use rabbitizer::IsaExtension::{R3000GTE, R4000ALLEGREX, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
-use rabbitizer::Vram;
 use rabbitizer::operands::ValuedOperand;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -11,7 +11,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 fn get_rabbitizer_instruction(word: u32, vram: u32, platform: Platform) -> rabbitizer::Instruction {
     rabbitizer::Instruction::new(
         word,
-        Vram::new(vram),
+        rabbitizer::Vram::new(vram),
         match platform {
             Platform::N64 => rabbitizer::InstructionFlags::new(MIPS_III),
             Platform::Psx => rabbitizer::InstructionFlags::new_extension(R3000GTE),
@@ -22,11 +22,43 @@ fn get_rabbitizer_instruction(word: u32, vram: u32, platform: Platform) -> rabbi
     )
 }
 
-pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
+fn arm_should_ignore_instruction(vram: usize, relocations: &BTreeMap<u64, Relocation>) -> bool {
+    let mut reloc = relocations.get(&(vram as u64));
+    if reloc.is_none() {
+        reloc = relocations.get(&((vram + 2) as u64));
+    }
+
+    if let Some(reloc) = reloc {
+        match reloc.flags {
+            objdiff_core::obj::RelocationFlags::Elf(flags) => {
+                if flags == R_ARM_ABS32
+                    || flags == R_ARM_REL32
+                    || flags == R_ARM_ABS16
+                    || flags == R_ARM_ABS8
+                    || flags == R_ARM_SBREL32
+                {
+                    return true;
+                }
+            }
+            objdiff_core::obj::RelocationFlags::Coff(_) => {
+                unimplemented!("COFF relocations not yet implemented")
+            }
+        }
+    }
+
+    false
+}
+
+pub fn get_opcodes(
+    bytes: &[u8],
+    platform: Platform,
+    vram: usize,
+    relocations: &BTreeMap<u64, Relocation>,
+) -> Vec<u16> {
     let insn_length = platform.arch().insn_length();
 
-    match platform {
-        Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Psp => bytes
+    match platform.arch() {
+        Arch::Mips => bytes
             .chunks_exact(insn_length)
             .map(|chunk| {
                 let code = platform
@@ -36,13 +68,37 @@ pub fn get_opcodes(bytes: &[u8], platform: Platform) -> Vec<u16> {
                 instruction.opcode() as u16
             })
             .collect(),
-        Platform::GcWii => bytes
+        Arch::Ppc => bytes
             .chunks_exact(insn_length)
             .map(|c| {
                 powerpc::Opcode::detect(
                     platform.endianness().read_u32_bytes(c.try_into().unwrap()),
                     powerpc::Extensions::gekko_broadway(),
                 ) as u16
+            })
+            .collect(),
+        Arch::Thumb => bytes
+            .chunks_exact(insn_length)
+            .enumerate()
+            .map(|(i, chunk)| {
+                let addr = vram + (i * insn_length);
+
+                // Ignore data
+                if arm_should_ignore_instruction(addr, relocations) {
+                    return 0;
+                }
+
+                let code = platform
+                    .endianness()
+                    .read_u16_bytes(chunk.try_into().unwrap());
+                let ins = unarm::thumb::Ins::new(
+                    code as u32,
+                    &unarm::ParseFlags {
+                        ual: true,
+                        version: unarm::ArmVersion::V4T,
+                    },
+                );
+                ins.op as u16
             })
             .collect(),
     }
@@ -60,30 +116,31 @@ pub(crate) fn get_equivalence_hash(
 
     let insn_length = platform.arch().insn_length();
 
-    match platform {
-        Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::GcWii | Platform::Psp => {
-            let mut hashed_reloc;
+    let mut hashed_reloc;
 
-            for (i, chunk) in bytes.chunks_exact(insn_length).enumerate() {
+    for (i, chunk) in bytes.chunks_exact(insn_length).enumerate() {
+        let cur_vram = vram + i * insn_length;
+
+        // Hash the unique id for the relocation entry rather than the specifics
+        if let Some(reloc) = relocations.get(&(cur_vram as u64)) {
+            let next_id = reloc_ids.len();
+            let hash_id = *reloc_ids
+                .entry((reloc.target_symbol, reloc.addend, reloc.flags))
+                .or_insert(next_id);
+            hash_id.hash(&mut hasher);
+            hashed_reloc = true;
+        } else {
+            hashed_reloc = false;
+        }
+
+        match platform.arch() {
+            Arch::Mips | Arch::Ppc => {
                 let code = platform
                     .endianness()
                     .read_u32_bytes(chunk.try_into().unwrap());
-                let cur_vram = vram + i * insn_length;
 
-                // Hash the unique id for the relocation entry rather than the specifics
-                if let Some(reloc) = relocations.get(&(cur_vram as u64)) {
-                    let next_id = reloc_ids.len();
-                    let hash_id = *reloc_ids
-                        .entry((reloc.target_symbol, reloc.addend, reloc.flags))
-                        .or_insert(next_id);
-                    hash_id.hash(&mut hasher);
-                    hashed_reloc = true;
-                } else {
-                    hashed_reloc = false;
-                }
-
-                match platform {
-                    Platform::N64 | Platform::Psx | Platform::Ps2 | Platform::Psp => {
+                match platform.arch() {
+                    Arch::Mips => {
                         let instruction =
                             get_rabbitizer_instruction(code, cur_vram as u32, platform);
 
@@ -242,7 +299,7 @@ pub(crate) fn get_equivalence_hash(
                             }
                         }
                     }
-                    Platform::GcWii => {
+                    Arch::Ppc => {
                         let instruction =
                             powerpc::Ins::new(code, powerpc::Extensions::gekko_broadway());
 
@@ -265,6 +322,64 @@ pub(crate) fn get_equivalence_hash(
                                 _ => a.hash(&mut hasher),
                             }
                         }
+                    }
+                    Arch::Thumb => unreachable!(),
+                }
+            }
+            Arch::Thumb => {
+                if arm_should_ignore_instruction(cur_vram, relocations) {
+                    continue;
+                }
+
+                let code = platform
+                    .endianness()
+                    .read_u16_bytes(chunk.try_into().unwrap());
+                let instruction = unarm::thumb::Ins::new(
+                    code as u32,
+                    &unarm::ParseFlags {
+                        ual: true,
+                        version: unarm::ArmVersion::V4T,
+                    },
+                );
+
+                // hash opcode
+                (instruction.op as u16).hash(&mut hasher);
+
+                // hash operands
+                for a in instruction
+                    .parse(&unarm::ParseFlags {
+                        ual: true,
+                        version: unarm::ArmVersion::V4T,
+                    })
+                    .args_iter()
+                {
+                    match a {
+                        unarm::args::Argument::None => {}
+                        unarm::args::Argument::Reg(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::RegList(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::CoReg(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::StatusReg(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::StatusMask(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::Shift(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::ShiftImm(_)
+                        | unarm::args::Argument::ShiftReg(_)
+                        | unarm::args::Argument::UImm(_)
+                        | unarm::args::Argument::SatImm(_)
+                        | unarm::args::Argument::SImm(_)
+                        | unarm::args::Argument::OffsetImm(_)
+                        | unarm::args::Argument::OffsetReg(_)
+                        | unarm::args::Argument::BranchDest(_) => {
+                            if !hashed_reloc {
+                                a.hash(&mut hasher);
+                            }
+                        }
+
+                        unarm::args::Argument::CoOption(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::CoOpcode(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::CoprocNum(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::CpsrMode(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::CpsrFlags(_) => a.hash(&mut hasher),
+                        unarm::args::Argument::Endian(_) => a.hash(&mut hasher),
                     }
                 }
             }
