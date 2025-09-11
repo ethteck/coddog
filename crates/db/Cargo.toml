@@ -9,6 +9,7 @@ readme = "../../README.md"
 description = """
 A database library for finding matching sequences of code among binaries
 """
+publish = false
 
 [[bin]]
 name = "coddog-db"
