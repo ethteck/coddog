@@ -9,6 +9,7 @@ readme = "../../README.md"
 description = """
 An api for finding matching sequences of code among binaries
 """
+publish = false
 
 [dependencies]
 axum = "0.8.4"

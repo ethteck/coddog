@@ -376,7 +376,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
 name = "coddog-api"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "axum",
  "axum-validated-extractors",
@@ -393,26 +393,22 @@ dependencies = [
 
 [[package]]
 name = "coddog-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "clap",
  "coddog-core",
- "coddog-db",
  "colored",
  "decomp_settings",
- "dotenvy",
  "glob",
  "inquire",
  "itertools",
- "pbr",
- "sqlx",
  "tokio",
 ]
 
 [[package]]
 name = "coddog-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "editdistancek",
@@ -427,13 +423,22 @@ dependencies = [
 
 [[package]]
 name = "coddog-db"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "clap",
  "coddog-core",
+ "colored",
+ "decomp_settings",
+ "dotenvy",
+ "glob",
+ "inquire",
+ "itertools",
+ "pbr",
  "serde",
  "sqlx",
+ "tokio",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-# Multi-stage Docker build for coddog-cli
+# Multi-stage Docker build for coddog-db
 # Stage 1: Build application
 FROM rust:1.89-slim AS builder
 WORKDIR /app
@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
-# Copy source code and build with db feature enabled
+# Copy source code and build
 COPY . .
-RUN cargo build --release --bin coddog-cli --features db
+RUN cargo build --release --bin coddog-db
 
 # Stage 2: Runtime image
 FROM ubuntu:24.04 AS runtime
@@ -27,10 +27,10 @@ USER coddog
 WORKDIR /app
 
 # Copy the binary
-COPY --from=builder /app/target/release/coddog-cli /app/coddog-cli
+COPY --from=builder /app/target/release/coddog-db /app/coddog-db
 
 # Create a directory for mounting project files and binaries
 RUN mkdir -p /app/projects
 RUN mkdir -p /app/bins
 
-CMD ["./coddog-cli", "--help"]
+CMD ["./coddog-db", "--help"]

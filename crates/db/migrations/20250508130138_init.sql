@@ -103,9 +103,38 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create the trigger
+-- Create the trigger to set the slug before inserting a new symbol
 CREATE TRIGGER set_symbol_slug_trigger
     BEFORE INSERT
     ON symbols
     FOR EACH ROW
 EXECUTE FUNCTION set_symbol_slug();
+
+-- Migration to add cascading delete for objects when no sources reference them
+
+-- Function to delete orphaned objects after a source is deleted
+CREATE OR REPLACE FUNCTION delete_orphaned_objects() RETURNS TRIGGER AS
+$$
+DECLARE
+    remaining_refs INTEGER;
+BEGIN
+    -- Check if any other sources still reference this object
+    SELECT COUNT(*) INTO remaining_refs
+    FROM sources
+    WHERE object_id = OLD.object_id;
+
+    -- If no other sources reference this object, delete it
+    IF remaining_refs = 0 THEN
+        DELETE FROM objects WHERE id = OLD.object_id;
+    END IF;
+
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger to run after a source is deleted
+CREATE TRIGGER delete_orphaned_objects_trigger
+    AFTER DELETE
+    ON sources
+    FOR EACH ROW
+EXECUTE FUNCTION delete_orphaned_objects();

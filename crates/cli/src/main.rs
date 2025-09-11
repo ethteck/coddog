@@ -1,6 +1,3 @@
-#[cfg(feature = "db")]
-mod db;
-
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
@@ -11,7 +8,6 @@ use coddog_core::{
 
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
-use dotenvy::dotenv;
 use glob::glob;
 use inquire::Select;
 use std::collections::{BTreeMap, HashMap};
@@ -115,41 +111,6 @@ enum Commands {
         /// Path to other projects' decomp.yaml files
         yamls: Vec<PathBuf>,
     },
-    /// Database management commands
-    #[cfg(feature = "db")]
-    #[command(subcommand)]
-    Db(DbCommands),
-}
-
-#[cfg(feature = "db")]
-#[derive(Subcommand)]
-enum DbCommands {
-    /// Add a new project to the database, given a path to a repo
-    AddProject {
-        /// Path to the project's repo
-        repo: PathBuf,
-    },
-    /// Delete a project from the database, removing its sources, symbols, and hashes
-    DeleteProject {
-        /// Name of the project to delete
-        name: String,
-    },
-    /// Search the database for matches of a given symbol
-    Match {
-        /// Name of the query function
-        query: String,
-        /// Specificity of match
-        match_type: MatchType,
-    },
-    /// Search the database for submatches of a given symbol
-    Submatch {
-        /// Name of the query function
-        query: String,
-        /// Window size (smaller values will find more matches but take longer)
-        window_size: usize,
-    },
-    /// Import data from a locally-loaded decomp.me database
-    ImportDecompme {},
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
@@ -438,7 +399,6 @@ fn get_cwd_symbols() -> Result<Vec<Symbol>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
     let cli: Cli = Cli::parse();
 
     match &cli.command {
@@ -580,8 +540,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        #[cfg(feature = "db")]
-        Commands::Db(cmd) => db::handle_db_command(cmd).await?,
     }
 
     Ok(())

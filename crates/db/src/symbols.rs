@@ -276,3 +276,11 @@ pub async fn query_by_exact_hash(
 
     Ok(syms)
 }
+
+pub async fn count(conn: Pool<Postgres>) -> anyhow::Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM symbols")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
+}
