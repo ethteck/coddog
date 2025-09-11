@@ -8,7 +8,7 @@ use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest, SortDirection, SubmatchResultOrder};
 use decomp_settings::read_config;
 use glob::glob;
-use inquire::Select;
+use inquire::{Confirm, Select};
 use itertools::Itertools;
 use pbr::ProgressBar;
 use sqlx::{PgPool, Pool, Postgres};
@@ -176,14 +176,60 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
             let pool = coddog_db::init().await?;
 
-            let project_id = coddog_db::projects::create(
-                pool.clone(),
-                &CreateProjectRequest {
-                    name: config.name.clone(),
-                    repo: config.repo.clone(),
-                },
-            )
-            .await?;
+            // Check if a project with this name already exists
+            let existing_projects = coddog_db::projects::query_by_exact_name(pool.clone(), &config.name).await?;
+            
+            let project_id = if !existing_projects.is_empty() {
+                // Project(s) with this name already exist, prompt user
+                let existing_project = if existing_projects.len() == 1 {
+                    existing_projects.into_iter().next().unwrap()
+                } else {
+                    // Multiple projects with same name, let user choose
+                    let res = Select::new(
+                        &format!("Multiple projects found with name '{}'. Which one do you want to replace?", config.name),
+                        existing_projects
+                    ).prompt()?;
+                    res
+                };
+
+                let should_replace = Confirm::new(
+                    &format!(
+                        "Project '{}' already exists in the database. Do you want to delete and re-index it?",
+                        existing_project.name
+                    )
+                )
+                .with_default(false)
+                .prompt()?;
+
+                if should_replace {
+                    println!("Deleting existing project '{}'...", existing_project.name);
+                    coddog_db::projects::delete(pool.clone(), existing_project.id).await?;
+                    println!("Existing project deleted. Proceeding with re-indexing...");
+                    
+                    // Create the new project
+                    coddog_db::projects::create(
+                        pool.clone(),
+                        &CreateProjectRequest {
+                            name: config.name.clone(),
+                            repo: config.repo.clone(),
+                        },
+                    )
+                    .await?
+                } else {
+                    println!("Operation cancelled. Project '{}' was not re-indexed.", config.name);
+                    return Ok(());
+                }
+            } else {
+                // No existing project, create new one
+                coddog_db::projects::create(
+                    pool.clone(),
+                    &CreateProjectRequest {
+                        name: config.name.clone(),
+                        repo: config.repo.clone(),
+                    },
+                )
+                .await?
+            };
 
             let mut tx = pool.begin().await?;
 

@@ -59,6 +59,14 @@ pub async fn query_by_name(conn: Pool<Postgres>, query: &str) -> anyhow::Result<
     Ok(rows)
 }
 
+pub async fn query_by_exact_name(conn: Pool<Postgres>, name: &str) -> anyhow::Result<Vec<Project>> {
+    let rows = sqlx::query_as!(Project, "SELECT * FROM projects WHERE name = $1", name)
+        .fetch_all(&conn)
+        .await?;
+
+    Ok(rows)
+}
+
 pub async fn query_all(conn: Pool<Postgres>) -> anyhow::Result<Vec<Project>> {
     let rows = sqlx::query_as!(Project, "SELECT * FROM projects")
         .fetch_all(&conn)
