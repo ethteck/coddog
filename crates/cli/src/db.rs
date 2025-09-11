@@ -12,7 +12,7 @@ use inquire::Select;
 use itertools::Itertools;
 use pbr::ProgressBar;
 use sqlx::{PgPool, Pool, Postgres};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -45,7 +45,7 @@ async fn db_search_project_by_name(conn: Pool<Postgres>, name: &str) -> anyhow::
     }
 
     if projects.len() > 1 {
-        let res = Select::new("Which project do you want to check?", projects).prompt();
+        let res = Select::new("Which project do you want to select?", projects).prompt();
         Ok(res?.id)
     } else {
         Ok(projects.first().unwrap().id)
@@ -216,7 +216,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 for obj_file in obj_files {
                     pb.inc();
                     let obj_bytes = std::fs::read(&obj_file)?;
-                    let object_id = coddog_db::create_object(&mut tx, &obj_bytes).await?;
+                    let object_id = coddog_db::objects::create(&mut tx, &obj_bytes).await?;
                     let source_id = coddog_db::create_source(
                         &mut tx,
                         obj_file.file_name().unwrap().to_str().unwrap(),
@@ -254,6 +254,45 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
             coddog_db::projects::delete(pool.clone(), project).await?;
             println!("Deleted project {name}");
+        }
+        DbCommands::CleanBins {} => {
+            let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
+
+            let bins: Vec<PathBuf> = glob(&format!("{}/*.bin", bin_path))?
+                .filter_map(Result::ok)
+                .collect();
+
+            const CHUNK_SIZE: usize = 1000;
+
+            let mut deleted_bins = 0;
+
+            let pool = coddog_db::init().await?;
+            let mut pb = ProgressBar::new(bins.len() as u64);
+            pb.format("[=>-]");
+            pb.message("Processing bins ");
+            for bin_chunk in &bins.iter().chunks(CHUNK_SIZE) {
+                let chunk_bins = bin_chunk.cloned().collect_vec();
+                let on_disk = chunk_bins
+                    .iter()
+                    .map(|p| p.file_stem().unwrap().to_str().unwrap().to_string())
+                    .collect_vec();
+
+                let in_db = coddog_db::objects::query_many(pool.clone(), &on_disk).await?;
+
+                let to_delete = HashSet::<String>::from_iter(on_disk)
+                    .difference(&HashSet::<String>::from_iter(in_db))
+                    .cloned()
+                    .collect_vec();
+
+                for hash in to_delete {
+                    let path = PathBuf::from(format!("{}/{}.bin", bin_path, hash));
+                    if path.exists() {
+                        std::fs::remove_file(&path)?;
+                        deleted_bins += 1;
+                    }
+                }
+            }
+            println!("Removed {} bins", deleted_bins);
         }
         DbCommands::Match { query, match_type } => {
             let pool = coddog_db::init().await?;
@@ -497,7 +536,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                     ..matched_sym.clone()
                 };
 
-                let object_id = coddog_db::create_object(&mut tx, &elf_object.elf_object).await?;
+                let object_id = coddog_db::objects::create(&mut tx, &elf_object.elf_object).await?;
 
                 let source_id = coddog_db::create_source(
                     &mut tx,

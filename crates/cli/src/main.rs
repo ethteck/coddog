@@ -134,6 +134,8 @@ enum DbCommands {
         /// Name of the project to delete
         name: String,
     },
+    /// Remove orphaned binary files on disk that no longer appear in the database
+    CleanBins {},
     /// Search the database for matches of a given symbol
     Match {
         /// Name of the query function
