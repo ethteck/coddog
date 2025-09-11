@@ -1,8 +1,3 @@
-#[cfg(feature = "db")]
-mod db;
-#[cfg(feature = "db")]
-use db::DbCommands;
-
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::cluster::get_clusters;
@@ -13,7 +8,6 @@ use coddog_core::{
 
 use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
-use dotenvy::dotenv;
 use glob::glob;
 use inquire::Select;
 use std::collections::HashMap;
@@ -117,10 +111,6 @@ enum Commands {
         /// Path to other projects' decomp.yaml files
         yamls: Vec<PathBuf>,
     },
-    /// Database management commands
-    #[cfg(feature = "db")]
-    #[command(subcommand)]
-    Db(DbCommands),
 }
 
 #[derive(ValueEnum, Clone, PartialEq)]
@@ -409,7 +399,6 @@ fn get_cwd_symbols() -> Result<Vec<Symbol>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    dotenv().ok();
     let cli: Cli = Cli::parse();
 
     match &cli.command {
@@ -551,8 +540,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        #[cfg(feature = "db")]
-        Commands::Db(cmd) => db::handle_db_command(cmd).await?,
     }
 
     Ok(())

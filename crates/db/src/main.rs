@@ -1,6 +1,5 @@
-use crate::{MatchType, get_full_path};
 use anyhow::{Result, anyhow};
-use clap::Subcommand;
+use clap::{Parser, Subcommand, ValueEnum};
 use coddog_core::ingest::read_elf;
 use coddog_core::{Platform, Symbol};
 use coddog_db::decompme::DecompMeScratch;
@@ -8,6 +7,7 @@ use coddog_db::projects::CreateProjectRequest;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest, SortDirection, SubmatchResultOrder};
 use decomp_settings::read_config;
+use dotenvy::dotenv;
 use glob::glob;
 use inquire::{Confirm, Select};
 use itertools::Itertools;
@@ -15,8 +15,18 @@ use pbr::ProgressBar;
 use sqlx::{PgPool, Pool, Postgres};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+#[derive(ValueEnum, Clone, PartialEq)]
+pub enum MatchType {
+    /// Only opcodes are compared
+    Opcode,
+    /// Opcodes and some operands are compared
+    Equivalent,
+    /// Exact bytes are compared
+    Exact,
+}
 
 async fn db_search_symbol_by_name(conn: Pool<Postgres>, name: &str) -> anyhow::Result<DBSymbol> {
     let symbols = coddog_db::symbols::query_by_name(
@@ -186,9 +196,18 @@ impl Display for AddProjectOption {
     }
 }
 
-#[cfg(feature = "db")]
+fn get_full_path(base_dir: &Path, config_path: Option<PathBuf>) -> Option<PathBuf> {
+    config_path.map(|path| {
+        if path.is_relative() {
+            base_dir.join(path)
+        } else {
+            path.clone()
+        }
+    })
+}
+
 #[derive(Subcommand)]
-pub(crate) enum DbCommands {
+pub enum DbCommands {
     /// Add a new project to the database, given a path to a repo
     AddProject {
         /// Path to the project's repo
@@ -221,7 +240,15 @@ pub(crate) enum DbCommands {
     Stats {},
 }
 
-pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
+/// Database management tool for coddog
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: DbCommands,
+}
+
+async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
     match cmd {
         DbCommands::AddProject { repo } => {
             let yaml = repo.join("decomp.yaml");
@@ -682,7 +709,7 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
             if bins_on_disk > total_objects as usize {
                 println!(
-                    "Warning: There are more bins on disk than objects in the database. You may want to run 'coddog db clean-bins' to remove orphaned bins."
+                    "Warning: There are more bins on disk than objects in the database. You may want to run 'coddog-db clean-bins' to remove orphaned bins."
                 );
             }
         }
@@ -757,4 +784,12 @@ async fn handle_add_project_choice(
             return Err(anyhow::Error::msg("Cancelled"));
         }
     })
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    dotenv().ok();
+    let cli: Cli = Cli::parse();
+
+    handle_db_command(&cli.command).await
 }

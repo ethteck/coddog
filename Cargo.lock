@@ -398,15 +398,11 @@ dependencies = [
  "anyhow",
  "clap",
  "coddog-core",
- "coddog-db",
  "colored",
  "decomp_settings",
- "dotenvy",
  "glob",
  "inquire",
  "itertools",
- "pbr",
- "sqlx",
  "tokio",
 ]
 
@@ -430,9 +426,18 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "blake3",
+ "clap",
  "coddog-core",
+ "colored",
+ "decomp_settings",
+ "dotenvy",
+ "glob",
+ "inquire",
+ "itertools",
+ "pbr",
  "serde",
  "sqlx",
+ "tokio",
 ]
 
 [[package]]
