@@ -1,6 +1,6 @@
 use crate::Project;
 use serde::Deserialize;
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Transaction};
 
 #[derive(Deserialize)]
 pub struct CreateProjectRequest {
@@ -14,13 +14,16 @@ pub struct UpdateProjectRequest {
     pub repo: Option<String>,
 }
 
-pub async fn create(conn: Pool<Postgres>, request: &CreateProjectRequest) -> anyhow::Result<i64> {
+pub async fn create(
+    tx: &mut Transaction<'_, Postgres>,
+    request: &CreateProjectRequest,
+) -> anyhow::Result<i64> {
     let rec = sqlx::query!(
         "INSERT INTO projects (name, repo) VALUES ($1, $2) RETURNING id",
         request.name,
         request.repo
     )
-    .fetch_one(&conn)
+    .fetch_one(&mut **tx)
     .await?;
 
     Ok(rec.id)
@@ -67,10 +70,18 @@ pub async fn query_all(conn: Pool<Postgres>) -> anyhow::Result<Vec<Project>> {
     Ok(rows)
 }
 
-pub async fn delete(conn: Pool<Postgres>, id: i64) -> anyhow::Result<()> {
+pub async fn delete(tx: &mut Transaction<'_, Postgres>, id: i64) -> anyhow::Result<()> {
     sqlx::query!("DELETE FROM projects WHERE id = $1", id)
-        .execute(&conn)
+        .execute(&mut **tx)
         .await?;
 
     Ok(())
+}
+
+pub async fn count(conn: Pool<Postgres>) -> anyhow::Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM projects")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
 }

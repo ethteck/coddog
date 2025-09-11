@@ -1,5 +1,6 @@
-use crate::{DbCommands, MatchType, get_full_path};
+use crate::{MatchType, get_full_path};
 use anyhow::{Result, anyhow};
+use clap::Subcommand;
 use coddog_core::ingest::read_elf;
 use coddog_core::{Platform, Symbol};
 use coddog_db::decompme::DecompMeScratch;
@@ -8,11 +9,12 @@ use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{DBSymbol, DBWindow, QueryWindowsRequest, SortDirection, SubmatchResultOrder};
 use decomp_settings::read_config;
 use glob::glob;
-use inquire::Select;
+use inquire::{Confirm, Select};
 use itertools::Itertools;
 use pbr::ProgressBar;
 use sqlx::{PgPool, Pool, Postgres};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -164,6 +166,61 @@ struct SubmatchSliceResults {
     length: i64,
 }
 
+enum AddProjectOption {
+    SelectAndReplaceExisting,
+    ReplaceExisting,
+    CreateNew,
+    Cancel,
+}
+
+impl Display for AddProjectOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AddProjectOption::SelectAndReplaceExisting => {
+                write!(f, "Select and Replace Existing Project")
+            }
+            AddProjectOption::ReplaceExisting => write!(f, "Replace Existing Project"),
+            AddProjectOption::CreateNew => write!(f, "Create New Project"),
+            AddProjectOption::Cancel => write!(f, "Cancel"),
+        }
+    }
+}
+
+#[cfg(feature = "db")]
+#[derive(Subcommand)]
+pub(crate) enum DbCommands {
+    /// Add a new project to the database, given a path to a repo
+    AddProject {
+        /// Path to the project's repo
+        repo: PathBuf,
+    },
+    /// Delete a project from the database, removing its sources, symbols, and hashes
+    DeleteProject {
+        /// Name of the project to delete
+        name: String,
+    },
+    /// Remove orphaned binary files on disk that no longer appear in the database
+    CleanBins {},
+    /// Search the database for matches of a given symbol
+    Match {
+        /// Name of the query function
+        query: String,
+        /// Specificity of match
+        match_type: MatchType,
+    },
+    /// Search the database for submatches of a given symbol
+    Submatch {
+        /// Name of the query function
+        query: String,
+        /// Window size (smaller values will find more matches but take longer)
+        window_size: usize,
+    },
+    /// Import data from a locally-loaded decomp.me database
+    ImportDecompme {},
+    /// Get info about the database
+    Stats {},
+}
+
 pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
     match cmd {
         DbCommands::AddProject { repo } => {
@@ -175,17 +232,44 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 .parse::<usize>()?;
 
             let pool = coddog_db::init().await?;
-
-            let project_id = coddog_db::projects::create(
-                pool.clone(),
-                &CreateProjectRequest {
-                    name: config.name.clone(),
-                    repo: config.repo.clone(),
-                },
-            )
-            .await?;
-
             let mut tx = pool.begin().await?;
+
+            let existing_projects =
+                coddog_db::projects::query_by_name(pool.clone(), &config.name).await?;
+
+            let project_id = if existing_projects.is_empty() {
+                coddog_db::projects::create(
+                    &mut tx,
+                    &CreateProjectRequest {
+                        name: config.name.clone(),
+                        repo: config.repo.clone(),
+                    },
+                )
+                .await?
+            } else if existing_projects.len() == 1 {
+                let choice = Select::new(
+                    "A project with this name already exists. What would you like to do?",
+                    vec![
+                        AddProjectOption::ReplaceExisting,
+                        AddProjectOption::CreateNew,
+                        AddProjectOption::Cancel,
+                    ],
+                )
+                .prompt()?;
+
+                handle_add_project_choice(&config, &mut tx, &existing_projects, choice).await?
+            } else {
+                let res = Select::new(
+                    "Multiple projects with this name already exist. What would you like to do?",
+                    vec![
+                        AddProjectOption::SelectAndReplaceExisting,
+                        AddProjectOption::CreateNew,
+                        AddProjectOption::Cancel,
+                    ],
+                )
+                .prompt()?;
+                handle_add_project_choice(&config, &mut tx, &existing_projects, res).await?
+            };
 
             for version in &config.versions {
                 let version_id = coddog_db::create_version(
@@ -249,10 +333,12 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
         }
         DbCommands::DeleteProject { name } => {
             let pool = coddog_db::init().await?;
+            let mut tx = pool.begin().await?;
 
             let project = db_search_project_by_name(pool.clone(), name).await?;
 
-            coddog_db::projects::delete(pool.clone(), project).await?;
+            coddog_db::projects::delete(&mut tx, project).await?;
+            tx.commit().await?;
             println!("Deleted project {name}");
         }
         DbCommands::CleanBins {} => {
@@ -565,6 +651,110 @@ pub(crate) async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             println!("ASM scratches can't find symbol: {}", cant_find_symbol);
             println!("ASM scratches with no bytes: {}", no_bytes);
         }
+        DbCommands::Stats {} => {
+            let bin_path = std::env::var("BIN_PATH").expect("BIN_PATH must be set");
+
+            let pool = coddog_db::init().await?;
+            let total_projects = coddog_db::projects::count(pool.clone()).await?;
+            let total_versions = coddog_db::count_versions(pool.clone()).await?;
+            let total_sources = coddog_db::count_sources(pool.clone()).await?;
+            let total_objects = coddog_db::objects::count(pool.clone()).await?;
+            let total_symbols = coddog_db::symbols::count(pool.clone()).await?;
+            let total_windows = coddog_db::count_windows(pool.clone()).await?;
+            let bins_on_disk = {
+                glob(&format!("{}/*.bin", bin_path))?
+                    .filter_map(Result::ok)
+                    .count()
+            };
+            println!("Database Statistics:");
+            println!("┌─────────────────┬─────────────┐");
+            println!("│ Category        │ Count       │");
+            println!("├─────────────────┼─────────────┤");
+            println!("│ Projects        │ {:>11} │", total_projects);
+            println!("│ Versions        │ {:>11} │", total_versions);
+            println!("│ Sources         │ {:>11} │", total_sources);
+            println!("│ Symbols         │ {:>11} │", total_symbols);
+            println!("│ Windows         │ {:>11} │", total_windows);
+            println!("├─────────────────┼─────────────┤");
+            println!("│ Objects         │ {:>11} │", total_objects);
+            println!("│ Bins on disk    │ {:>11} │", bins_on_disk);
+            println!("└─────────────────┴─────────────┘");
+
+            if bins_on_disk > total_objects as usize {
+                println!(
+                    "Warning: There are more bins on disk than objects in the database. You may want to run 'coddog db clean-bins' to remove orphaned bins."
+                );
+            }
+        }
     }
     Ok(())
+}
+
+async fn handle_add_project_choice(
+    config: &decomp_settings::config::Config,
+    tx: &mut sqlx::Transaction<'static, Postgres>,
+    existing_projects: &[coddog_db::Project],
+    choice: AddProjectOption,
+) -> Result<i64, anyhow::Error> {
+    Ok(match choice {
+        AddProjectOption::SelectAndReplaceExisting => {
+            let project = Select::new(
+                "Which project do you want to delete and re-index?",
+                existing_projects.to_vec(),
+            )
+            .prompt()?;
+            let confirm = Confirm::new(&format!(
+                                    "Are you sure you want to delete and re-index the existing project '{}' (ID: {})? This will delete all associated data.",
+                                    project.name, project.id
+                                ))
+                                .with_default(false)
+                                .prompt()?;
+            if !confirm {
+                return Err(anyhow::Error::msg("Cancelled"));
+            }
+            coddog_db::projects::delete(tx, project.id).await?;
+            coddog_db::projects::create(
+                tx,
+                &CreateProjectRequest {
+                    name: config.name.clone(),
+                    repo: config.repo.clone(),
+                },
+            )
+            .await?
+        }
+        AddProjectOption::ReplaceExisting => {
+            let project = &existing_projects[0];
+            let confirm = Confirm::new(&format!(
+                                    "Are you sure you want to delete and re-index the existing project '{}' (ID: {})? This will delete all associated data.",
+                                    project.name, project.id
+                                ))
+                                .with_default(false)
+                                .prompt()?;
+            if !confirm {
+                return Err(anyhow::Error::msg("Cancelled"));
+            }
+            coddog_db::projects::delete(tx, project.id).await?;
+            coddog_db::projects::create(
+                tx,
+                &CreateProjectRequest {
+                    name: config.name.clone(),
+                    repo: config.repo.clone(),
+                },
+            )
+            .await?
+        }
+        AddProjectOption::CreateNew => {
+            coddog_db::projects::create(
+                tx,
+                &CreateProjectRequest {
+                    name: config.name.clone(),
+                    repo: config.repo.clone(),
+                },
+            )
+            .await?
+        }
+        AddProjectOption::Cancel => {
+            return Err(anyhow::Error::msg("Cancelled"));
+        }
+    })
 }

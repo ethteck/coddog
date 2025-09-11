@@ -62,3 +62,11 @@ pub async fn query_many(conn: Pool<Postgres>, hashes: &[String]) -> Result<Vec<S
         .await?;
     Ok(res.iter().map(|r| r.hash.clone()).collect())
 }
+
+pub async fn count(conn: Pool<Postgres>) -> anyhow::Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM objects")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
+}

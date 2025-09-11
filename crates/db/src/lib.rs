@@ -227,6 +227,14 @@ pub async fn get_versions_for_project(
     Ok(rows)
 }
 
+pub async fn count_versions(conn: Pool<Postgres>) -> Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM versions")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
+}
+
 pub async fn create_source(
     tx: &mut Transaction<'_, Postgres>,
     name: &str,
@@ -252,6 +260,14 @@ pub async fn create_source(
         Ok(r) => Ok(r.id),
         Err(e) => Err(e),
     }
+}
+
+pub async fn count_sources(conn: Pool<Postgres>) -> Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM sources")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
 }
 
 pub async fn create_symbol_window_hashes(
@@ -431,4 +447,12 @@ LIMIT $3 OFFSET $4
         windows,
         total_count,
     })
+}
+
+pub async fn count_windows(conn: Pool<Postgres>) -> anyhow::Result<i64> {
+    let rec = sqlx::query!("SELECT COUNT(*) as count FROM windows")
+        .fetch_one(&conn)
+        .await?;
+
+    Ok(rec.count.unwrap_or(0))
 }

@@ -23,7 +23,15 @@ pub(crate) async fn create_project(
     State(pg_pool): State<PgPool>,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    let res = coddog_db::projects::create(pg_pool, &req)
+    let mut tx = pg_pool.begin().await.map_err(|e| {
+        eprintln!("Error starting transaction: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
+
+    let res = coddog_db::projects::create(&mut tx, &req)
         .await
         .map_err(|e| {
             eprintln!("Error creating project: {e}");
@@ -32,6 +40,14 @@ pub(crate) async fn create_project(
                 json!({"success": false, "message": e.to_string()}).to_string(),
             )
         })?;
+
+    tx.commit().await.map_err(|e| {
+        eprintln!("Error committing transaction: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
 
     Ok((StatusCode::CREATED, json!(res).to_string()))
 }
@@ -75,7 +91,15 @@ pub(crate) async fn delete_project(
     State(pg_pool): State<PgPool>,
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<(StatusCode, String), (StatusCode, String)> {
-    coddog_db::projects::delete(pg_pool, id)
+    let mut tx = pg_pool.begin().await.map_err(|e| {
+        eprintln!("Error starting transaction: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
+
+    coddog_db::projects::delete(&mut tx, id)
         .await
         .map_err(|e| {
             eprintln!("Error deleting project: {e}");
@@ -84,6 +108,14 @@ pub(crate) async fn delete_project(
                 json!({"success": false, "message": e.to_string()}).to_string(),
             )
         })?;
+
+    tx.commit().await.map_err(|e| {
+        eprintln!("Error committing transaction: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json!({"success": false, "message": e.to_string()}).to_string(),
+        )
+    })?;
 
     Ok((StatusCode::NO_CONTENT, json!(()).to_string()))
 }
