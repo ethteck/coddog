@@ -1,10 +1,10 @@
-use std::collections::BTreeMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::{Platform, Symbol, SymbolDef};
+use crate::{Platform, Symbol, arch};
 use anyhow::{Result, anyhow};
 use mapfile_parser::MapFile;
 use objdiff_core::diff::DiffObjConfig;
-use objdiff_core::obj::SymbolFlag;
+use objdiff_core::obj::{ResolvedSymbol, SymbolFlag};
 
 pub fn read_elf(
     platform: Platform,
@@ -66,27 +66,50 @@ pub fn read_elf(
                 eprintln!("Error getting symbol data: {}", e);
                 return None; // Skip this symbol if data is out of bounds
             }
-            let data = data.unwrap();
+            let bytes: Vec<u8> = data.unwrap().to_vec();
 
-            let sect_relocations = section
-                .relocations
-                .iter()
-                .map(|r| (r.address, r.clone()))
-                .collect();
+            let insn_refs = objdiff_obj
+                .arch
+                .scan_instructions(
+                    ResolvedSymbol {
+                        obj: &objdiff_obj,
+                        symbol_index: *idx,
+                        symbol,
+                        section_index,
+                        section,
+                        data: &bytes,
+                    },
+                    &config,
+                )
+                .unwrap();
 
-            Some(Symbol::new(
-                SymbolDef {
-                    name: symbol.name.clone(),
-                    bytes: data.to_vec(),
-                    vram: symbol.address as usize,
-                    is_decompiled: unmatched_funcs
-                        .as_ref()
-                        .is_none_or(|fs| !fs.contains(&symbol.name)),
-                    platform,
-                    symbol_idx: *idx,
-                },
-                &sect_relocations,
-            ))
+            let vram = symbol.address as usize;
+
+            let mut hasher = DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            let exact_hash = hasher.finish();
+
+            let equiv_hash =
+                arch::get_equivalence_hash(&bytes, platform, &objdiff_obj, section, &insn_refs);
+
+            let opcodes: Vec<u16> = insn_refs.iter().map(|r| r.opcode).collect();
+            let mut hasher = DefaultHasher::new();
+            opcodes.hash(&mut hasher);
+            let opcode_hash = hasher.finish();
+
+            Some(Symbol {
+                name: symbol.name.clone(),
+                bytes,
+                opcodes,
+                vram,
+                is_decompiled: unmatched_funcs
+                    .as_ref()
+                    .is_none_or(|fs| !fs.contains(&symbol.name)),
+                exact_hash,
+                equiv_hash,
+                opcode_hash,
+                symbol_idx: *idx,
+            })
         })
         .collect();
 
@@ -108,24 +131,48 @@ pub fn read_map(
         .filter(|x| x.section_type == ".text")
         .flat_map(|x| x.symbols.iter())
         .filter(|x| x.vrom.is_some())
-        .map(|x| {
+        .enumerate()
+        .map(|(symbol_idx, x)| {
             let start = x.vrom.unwrap() as usize;
             let end = start + x.size as usize;
             let raw = &rom_bytes[start..end];
+            let vram = x.vram as usize;
 
-            Symbol::new(
-                SymbolDef {
-                    name: x.name.clone(),
-                    bytes: raw.to_vec(),
-                    vram: x.vram as usize,
-                    is_decompiled: unmatched_funcs
-                        .as_ref()
-                        .is_some_and(|fs| !fs.contains(&x.name)),
-                    platform,
-                    symbol_idx: 0, // No symbol index in plain binaries
-                },
-                &BTreeMap::default(),
-            )
+            let mut bytes = raw.to_vec();
+
+            let insn_length = platform.arch().standard_insn_length();
+
+            // trim trailing nops
+            while bytes.len() >= insn_length
+                && bytes[bytes.len() - insn_length..] == vec![0; insn_length]
+            {
+                bytes.truncate(bytes.len() - insn_length);
+            }
+            let opcodes: Vec<u16> = arch::get_opcodes_raw(&bytes, platform);
+
+            let mut hasher = DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            let exact_hash = hasher.finish();
+
+            let equiv_hash = arch::get_equivalence_hash_raw(&bytes, vram, platform);
+
+            let mut hasher = DefaultHasher::new();
+            opcodes.hash(&mut hasher);
+            let opcode_hash = hasher.finish();
+
+            Symbol {
+                name: x.name.clone(),
+                bytes,
+                opcodes,
+                vram,
+                is_decompiled: unmatched_funcs
+                    .as_ref()
+                    .is_some_and(|fs| !fs.contains(&x.name)),
+                exact_hash,
+                equiv_hash,
+                opcode_hash,
+                symbol_idx,
+            }
         })
         .collect();
     Ok(ret)

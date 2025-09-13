@@ -1,6 +1,7 @@
+mod cluster;
+
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
-use coddog_core::cluster::get_clusters;
 use coddog_core::{
     self as core, Binary, Platform, Symbol, get_submatches,
     ingest::{read_elf, read_map},
@@ -10,11 +11,13 @@ use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use glob::glob;
 use inquire::Select;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+
+use crate::cluster::get_clusters;
 
 const BINARY_COLORS: [Color; 6] = [
     Color::BrightGreen,
@@ -182,7 +185,7 @@ fn do_submatch(query: &str, symbols: &[Symbol], window_size: usize) {
         }
 
         if query_sym.opcodes == s.opcodes {
-            let match_pct = if query_sym.bytes == s.bytes {
+            let match_pct = if query_sym.exact_hash == s.exact_hash {
                 "100%"
             } else {
                 "99%"
@@ -525,14 +528,14 @@ async fn main() -> Result<()> {
             let platform =
                 platform.ok_or_else(|| anyhow!("No platform found in provided configs"))?;
 
-            let opcodes = core::arch::get_opcodes(&query_bin_data, platform, 0, &BTreeMap::new());
+            let opcodes = core::arch::get_opcodes_raw(&query_bin_data, platform);
             for (i, hash) in core::get_hashes(&opcodes, window_size).iter().enumerate() {
                 if let Some((project_name, version_name, symbol)) = symbol_hashes.get(hash)
                     && opcodes[i..i + symbol.opcodes.len()] == symbol.opcodes
                 {
                     println!(
                         "0x{:X} - {} {}: {}",
-                        i * platform.arch().insn_length(),
+                        i * platform.arch().standard_insn_length(),
                         project_name.color(BINARY_COLORS[0]),
                         version_name.color(BINARY_COLORS[0]),
                         cli_fullname(symbol)

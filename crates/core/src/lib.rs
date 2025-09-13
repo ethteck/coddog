@@ -1,16 +1,12 @@
 pub mod arch;
-pub mod cluster;
 pub mod ingest;
 
-use crate::arch::get_opcodes;
 use anyhow::Result;
 use editdistancek::edit_distance_bounded;
 use objdiff_core::diff::DiffObjConfig;
 use objdiff_core::diff::display::DiffText;
-use objdiff_core::obj::Relocation;
 use object::Endianness;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -21,7 +17,7 @@ pub enum Arch {
 }
 
 impl Arch {
-    pub fn insn_length(&self) -> usize {
+    pub fn standard_insn_length(&self) -> usize {
         match self {
             Arch::Mips => 4,
             Arch::Ppc => 4,
@@ -64,6 +60,7 @@ pub enum Platform {
     Gba,
     Nds,
     N3ds,
+    Irix,
     //Switch,
 }
 }
@@ -91,8 +88,8 @@ impl Platform {
             "gba" => Some(Platform::Gba),
             "nds_arm9" => Some(Platform::Nds),
             "n3ds" => Some(Platform::N3ds),
+            "irix" => Some(Platform::Irix),
             "switch" => None, //Some(Platform::Switch), // TODO: needs aarch64 support
-            "irix" => None,   // TODO: not sure
             "saturn" => None, // TODO: needs sh2 support
             "win32" => None,  // :frull:
             "msdos" => None,  // :frull:
@@ -112,6 +109,7 @@ impl Platform {
             Platform::Gba => Endianness::Little,
             Platform::Nds => Endianness::Little,
             Platform::N3ds => Endianness::Little,
+            Platform::Irix => Endianness::Big,
             //Platform::Switch => Endianness::Little,
         }
     }
@@ -126,6 +124,7 @@ impl Platform {
             Platform::Gba => Arch::Thumb,
             Platform::Nds => Arch::Thumb,
             Platform::N3ds => Arch::Thumb,
+            Platform::Irix => Arch::Mips,
             //Platform::Switch => Arch::Aarch64,
         }
     }
@@ -153,6 +152,16 @@ pub struct Symbol {
     pub symbol_idx: usize,
 }
 
+impl Symbol {
+    pub fn get_exact_hashes(&self, window_size: usize) -> Vec<u64> {
+        get_hashes(&self.bytes, window_size)
+    }
+
+    pub fn get_opcode_hashes(&self, window_size: usize) -> Vec<u64> {
+        get_hashes(&self.opcodes, window_size)
+    }
+}
+
 #[derive(Debug)]
 pub struct Binary {
     pub name: String,
@@ -166,59 +175,6 @@ pub struct InsnSeqMatch {
     pub length: usize,
 }
 
-pub struct SymbolDef {
-    name: String,
-    bytes: Vec<u8>,
-    vram: usize,
-    is_decompiled: bool,
-    platform: Platform,
-    symbol_idx: usize,
-}
-
-impl Symbol {
-    pub fn new(def: SymbolDef, relocations: &BTreeMap<u64, Relocation>) -> Symbol {
-        let mut bytes = def.bytes;
-
-        let insn_length = def.platform.arch().insn_length();
-        while bytes.len() >= insn_length
-            && bytes[bytes.len() - insn_length..] == vec![0; insn_length]
-        {
-            bytes.truncate(bytes.len() - insn_length);
-        }
-
-        let mut hasher = DefaultHasher::new();
-        bytes.hash(&mut hasher);
-        let exact_hash = hasher.finish();
-
-        let equiv_hash = arch::get_equivalence_hash(&bytes, def.vram, def.platform, relocations);
-        let vram = def.vram;
-
-        let opcodes = get_opcodes(&bytes, def.platform, vram, relocations);
-        let mut hasher = DefaultHasher::new();
-        opcodes.hash(&mut hasher);
-        let opcode_hash = hasher.finish();
-
-        Symbol {
-            name: def.name,
-            bytes,
-            opcodes,
-            vram,
-            is_decompiled: def.is_decompiled,
-            exact_hash,
-            equiv_hash,
-            opcode_hash,
-            symbol_idx: def.symbol_idx,
-        }
-    }
-
-    pub fn get_exact_hashes(&self, window_size: usize) -> Vec<u64> {
-        get_hashes(&self.bytes, window_size)
-    }
-
-    pub fn get_opcode_hashes(&self, window_size: usize) -> Vec<u64> {
-        get_hashes(&self.opcodes, window_size)
-    }
-}
 pub fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
     let mut data = data.to_vec();
 
@@ -294,7 +250,7 @@ pub fn diff_symbols(sym1: &Symbol, sym2: &Symbol, threshold: f32) -> f32 {
         let edit_dist = edit_distance as f32;
         let normalized_edit_dist = (max_edit_dist - edit_dist) / max_edit_dist;
 
-        if normalized_edit_dist == 1.0 && sym1.bytes != sym2.bytes {
+        if normalized_edit_dist == 1.0 && sym1.exact_hash != sym2.exact_hash {
             return 0.9999;
         }
         normalized_edit_dist

@@ -67,7 +67,7 @@ impl Display for DBSymbol {
 impl DBSymbol {
     pub fn get_num_insns(&self) -> i32 {
         let platform: Platform = self.platform.try_into().expect("Unexpected platform ID");
-        self.len / platform.arch().insn_length() as i32
+        self.len / platform.arch().standard_insn_length() as i32
     }
 }
 
@@ -145,7 +145,7 @@ pub struct SubmatchResult {
 impl SubmatchResult {
     pub fn from_db_window(window: &DBWindow) -> Self {
         let platform: Platform = window.platform.try_into().expect("Unexpected platform ID");
-        let num_insns = window.symbol_len / platform.arch().insn_length() as i32;
+        let num_insns = window.symbol_len / platform.arch().standard_insn_length() as i32;
         Self {
             symbol: SymbolMetadata {
                 slug: window.symbol_slug.clone(),

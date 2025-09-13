@@ -1,3 +1,5 @@
+use coddog_core::diff_symbols;
+
 use crate::*;
 
 #[derive(Debug)]

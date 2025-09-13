@@ -24,3 +24,6 @@ VALUES ('nds', 6, (SELECT id FROM projects WHERE name = 'decomp.me'));
 
 INSERT INTO versions (name, platform, project_id)
 VALUES ('n3ds', 7, (SELECT id FROM projects WHERE name = 'decomp.me'));
+
+INSERT INTO versions (name, platform, project_id)
+VALUES ('irix', 8, (SELECT id FROM projects WHERE name = 'decomp.me'));
