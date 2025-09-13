@@ -61,12 +61,7 @@ pub fn get_opcodes_raw(bytes: &[u8], platform: Platform) -> Vec<u16> {
                     code as u32,
                     &unarm::ParseFlags {
                         ual: true,
-                        version: match platform {
-                            Platform::Gba => unarm::ArmVersion::V4T,
-                            Platform::Nds => unarm::ArmVersion::V5Te,
-                            Platform::N3ds => unarm::ArmVersion::V6K,
-                            _ => unreachable!(),
-                        },
+                        version: platform.arm_version(),
                     },
                 );
                 ins.op as u16
@@ -105,32 +100,18 @@ fn decode_instruction(
                     .read_u16_bytes(insn_bytes.try_into().unwrap()) as u32,
                 &unarm::ParseFlags {
                     ual: true,
-                    version: match platform {
-                        Platform::Gba => unarm::ArmVersion::V4T,
-                        Platform::Nds => unarm::ArmVersion::V5Te,
-                        Platform::N3ds => unarm::ArmVersion::V6K,
-                        _ => unreachable!(),
-                    },
+                    version: platform.arm_version(),
                 },
             ))),
-            4 => {
-                let code = platform
+            4 => Ok(Insn::Thumb(unarm::thumb::Ins::new(
+                platform
                     .endianness()
-                    .read_u32_bytes(insn_bytes.try_into().unwrap());
-
-                Ok(Insn::Thumb(unarm::thumb::Ins::new(
-                    code,
-                    &unarm::ParseFlags {
-                        ual: true,
-                        version: match platform {
-                            Platform::Gba => unarm::ArmVersion::V4T,
-                            Platform::Nds => unarm::ArmVersion::V5Te,
-                            Platform::N3ds => unarm::ArmVersion::V6K,
-                            _ => unreachable!(),
-                        },
-                    },
-                )))
-            }
+                    .read_u32_bytes(insn_bytes.try_into().unwrap()),
+                &unarm::ParseFlags {
+                    ual: true,
+                    version: platform.arm_version(),
+                },
+            ))),
             _ => Err(anyhow::anyhow!(
                 "Unexpected instruction size {} for Thumb",
                 insn_ref.size
@@ -155,9 +136,8 @@ pub(crate) fn get_equivalence_hash(
     let start_address = insn_refs.first().map(|r| r.address as usize).unwrap_or(0);
 
     for insn_ref in insn_refs {
-        // TODO once new objdiff is out, change this to the const OPCODE_INVALID
+        // Replace with constant when new objdiff is out
         if insn_ref.opcode == u16::MAX || insn_ref.opcode == u16::MAX - 1 {
-            // Invalid instruction, skip
             continue;
         }
 
@@ -184,7 +164,7 @@ pub(crate) fn get_equivalence_hash(
         let instruction = match decode_instruction(insn_bytes, platform, insn_ref) {
             Ok(insn) => insn,
             Err(_) => {
-                println!(
+                eprintln!(
                     "Warning: Failed to read instruction at {:#X}",
                     insn_ref.address
                 );
@@ -220,7 +200,7 @@ pub(crate) fn get_equivalence_hash_raw(bytes: &[u8], vram: usize, platform: Plat
         let insn = match insn {
             Ok(insn) => insn,
             Err(_) => {
-                println!("Warning: Failed to read instruction at {:#X}", cur_vram);
+                eprintln!("Warning: Failed to read instruction at {:#X}", cur_vram);
                 continue;
             }
         };
@@ -233,224 +213,225 @@ pub(crate) fn get_equivalence_hash_raw(bytes: &[u8], vram: usize, platform: Plat
 
 fn hash_args_for_insn(insn: Insn, hasher: &mut DefaultHasher, hashed_reloc: bool) {
     match insn {
-        Insn::Mips(insn) => {
-            // hash opcode
-            insn.opcode().hash(hasher);
+        Insn::Mips(insn) => hash_mips_args(insn, hasher, hashed_reloc),
+        Insn::Ppc(insn) => hash_ppc_args(insn, hasher, hashed_reloc),
+        Insn::Thumb(insn) => hash_thumb_args(insn, hasher, hashed_reloc),
+    }
+}
 
-            // hash operands
-            for vo in insn.valued_operands_iter() {
-                match vo {
-                    ValuedOperand::ALL_EMPTY() => vo.hash(hasher),
-                    ValuedOperand::core_rs(_) => vo.hash(hasher),
-                    ValuedOperand::core_rt(_) => vo.hash(hasher),
-                    ValuedOperand::core_rd(_) => vo.hash(hasher),
-                    ValuedOperand::core_sa(_) => vo.hash(hasher),
-                    ValuedOperand::core_zero() => vo.hash(hasher),
-                    ValuedOperand::core_cop0d(_) => vo.hash(hasher),
-                    ValuedOperand::core_cop0cd(_) => vo.hash(hasher),
-                    ValuedOperand::core_fs(_) => vo.hash(hasher),
-                    ValuedOperand::core_ft(_) => vo.hash(hasher),
-                    ValuedOperand::core_fd(_) => vo.hash(hasher),
-                    // ValuedOperand::core_cop1cs(_) => {}
-                    // ValuedOperand::core_cop2t(_) => {}
-                    // ValuedOperand::core_cop2d(_) => {}
-                    // ValuedOperand::core_cop2cd(_) => {}
-                    // ValuedOperand::core_op(_) => {}
-                    // ValuedOperand::core_hint(_) => {}
-                    // ValuedOperand::core_code(_, _) => {}
-                    // ValuedOperand::core_code_lower(_) => {}
-                    // ValuedOperand::core_copraw(_) => {}
-                    ValuedOperand::core_label(_) => {
-                        if !hashed_reloc {
-                            vo.hash(hasher);
-                        }
-                    }
-                    ValuedOperand::core_imm_i16(_) => {
-                        if !hashed_reloc {
-                            vo.hash(hasher);
-                        }
-                    }
-                    ValuedOperand::core_imm_u16(_) => {
-                        if !hashed_reloc {
-                            vo.hash(hasher);
-                        }
-                    }
-                    ValuedOperand::core_branch_target_label(_) => {
-                        // assert!(
-                        //     !hashed_reloc,
-                        //     "Relocation and branch target label at the same time"
-                        // );
-                        vo.hash(hasher);
-                    }
-                    ValuedOperand::core_imm_rs(_, gpr) => {
-                        if !hashed_reloc {
-                            vo.hash(hasher);
-                        } else {
-                            gpr.hash(hasher);
-                        }
-                    }
-                    // ValuedOperand::core_maybe_rd_rs(_, _) => {}
-                    // ValuedOperand::core_maybe_zero_rs(_, _) => {}
-                    // ValuedOperand::rsp_cop0d(_) => {}
-                    // ValuedOperand::rsp_cop2cd(_) => {}
-                    // ValuedOperand::rsp_vs(_) => {}
-                    // ValuedOperand::rsp_vd(_) => {}
-                    // ValuedOperand::rsp_vt_elementhigh(_, _) => {}
-                    // ValuedOperand::rsp_vt_elementlow(_, _) => {}
-                    // ValuedOperand::rsp_vd_de(_, _) => {}
-                    // ValuedOperand::rsp_vs_index(_, _) => {}
-                    // ValuedOperand::rsp_offset_rs(_, _) => {}
-                    // ValuedOperand::r3000gte_sf(_) => {}
-                    // ValuedOperand::r3000gte_mx(_) => {}
-                    // ValuedOperand::r3000gte_v(_) => {}
-                    // ValuedOperand::r3000gte_cv(_) => {}
-                    // ValuedOperand::r3000gte_lm(_) => {}
-                    // ValuedOperand::r4000allegrex_s_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_s_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_s_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_s_vt_imm(_) => {}
-                    // ValuedOperand::r4000allegrex_s_vd_imm(_) => {}
-                    // ValuedOperand::r4000allegrex_p_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_p_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_p_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_t_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_t_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_t_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_q_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_q_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_q_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_q_vt_imm(_) => {}
-                    // ValuedOperand::r4000allegrex_mp_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_mp_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_mp_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_mp_vs_transpose(_) => {}
-                    // ValuedOperand::r4000allegrex_mt_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_mt_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_mt_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_mt_vs_transpose(_) => {}
-                    // ValuedOperand::r4000allegrex_mq_vs(_) => {}
-                    // ValuedOperand::r4000allegrex_mq_vt(_) => {}
-                    // ValuedOperand::r4000allegrex_mq_vd(_) => {}
-                    // ValuedOperand::r4000allegrex_mq_vs_transpose(_) => {}
-                    // ValuedOperand::r4000allegrex_cop2cs(_) => {}
-                    // ValuedOperand::r4000allegrex_cop2cd(_) => {}
-                    // ValuedOperand::r4000allegrex_pos(_) => {}
-                    // ValuedOperand::r4000allegrex_size(_) => {}
-                    // ValuedOperand::r4000allegrex_size_plus_pos(_) => {}
-                    // ValuedOperand::r4000allegrex_imm3(_) => {}
-                    // ValuedOperand::r4000allegrex_offset14_base(_, _) => {}
-                    // ValuedOperand::r4000allegrex_offset14_base_maybe_wb(_, _, _) => {}
-                    // ValuedOperand::r4000allegrex_vcmp_cond_s_maybe_vs_maybe_vt(_, _, _) => {}
-                    // ValuedOperand::r4000allegrex_vcmp_cond_p_maybe_vs_maybe_vt(_, _, _) => {}
-                    // ValuedOperand::r4000allegrex_vcmp_cond_t_maybe_vs_maybe_vt(_, _, _) => {}
-                    // ValuedOperand::r4000allegrex_vcmp_cond_q_maybe_vs_maybe_vt(_, _, _) => {}
-                    // ValuedOperand::r4000allegrex_vconstant(_) => {}
-                    // ValuedOperand::r4000allegrex_power_of_two(_) => {}
-                    // ValuedOperand::r4000allegrex_vfpu_cc_bit(_) => {}
-                    // ValuedOperand::r4000allegrex_bn(_) => {}
-                    // ValuedOperand::r4000allegrex_int16(_) => {}
-                    // ValuedOperand::r4000allegrex_float16(_) => {}
-                    // ValuedOperand::r4000allegrex_p_vrot_code(_) => {}
-                    // ValuedOperand::r4000allegrex_t_vrot_code(_) => {}
-                    // ValuedOperand::r4000allegrex_q_vrot_code(_) => {}
-                    // ValuedOperand::r4000allegrex_wpx(_) => {}
-                    // ValuedOperand::r4000allegrex_wpy(_) => {}
-                    // ValuedOperand::r4000allegrex_wpz(_) => {}
-                    // ValuedOperand::r4000allegrex_wpw(_) => {}
-                    // ValuedOperand::r4000allegrex_rpx(_) => {}
-                    // ValuedOperand::r4000allegrex_rpy(_) => {}
-                    // ValuedOperand::r4000allegrex_rpz(_) => {}
-                    // ValuedOperand::r4000allegrex_rpw(_) => {}
-                    // ValuedOperand::r5900ee_I() => {}
-                    // ValuedOperand::r5900ee_Q() => {}
-                    // ValuedOperand::r5900ee_R() => {}
-                    // ValuedOperand::r5900ee_ACC() => {}
-                    // ValuedOperand::r5900ee_immediate5(_) => {}
-                    // ValuedOperand::r5900ee_immediate15(_) => {}
-                    // ValuedOperand::r5900ee_vfs(_) => {}
-                    // ValuedOperand::r5900ee_vft(_) => {}
-                    // ValuedOperand::r5900ee_vfd(_) => {}
-                    // ValuedOperand::r5900ee_vis(_) => {}
-                    // ValuedOperand::r5900ee_vit(_) => {}
-                    // ValuedOperand::r5900ee_vid(_) => {}
-                    // ValuedOperand::r5900ee_ACCxyzw(_, _, _, _) => {}
-                    // ValuedOperand::r5900ee_vfsxyzw(_, _, _, _, _) => {}
-                    // ValuedOperand::r5900ee_vftxyzw(_, _, _, _, _) => {}
-                    // ValuedOperand::r5900ee_vfdxyzw(_, _, _, _, _) => {}
-                    // ValuedOperand::r5900ee_vftn(_, _) => {}
-                    // ValuedOperand::r5900ee_vfsl(_, _) => {}
-                    // ValuedOperand::r5900ee_vftm(_, _) => {}
-                    // ValuedOperand::r5900ee_vis_predecr(_, _) => {}
-                    // ValuedOperand::r5900ee_vit_predecr(_, _) => {}
-                    // ValuedOperand::r5900ee_vis_postincr(_, _) => {}
-                    // ValuedOperand::r5900ee_vit_postincr(_, _) => {}
-                    // ValuedOperand::r5900ee_vis_parenthesis(_) => {}
-                    _ => vo.hash(hasher),
+fn hash_mips_args(insn: rabbitizer::Instruction, hasher: &mut DefaultHasher, hashed_reloc: bool) {
+    // hash opcode
+    insn.opcode().hash(hasher);
+
+    // hash operands
+    for vo in insn.valued_operands_iter() {
+        match vo {
+            ValuedOperand::ALL_EMPTY() => vo.hash(hasher),
+            ValuedOperand::core_rs(_) => vo.hash(hasher),
+            ValuedOperand::core_rt(_) => vo.hash(hasher),
+            ValuedOperand::core_rd(_) => vo.hash(hasher),
+            ValuedOperand::core_sa(_) => vo.hash(hasher),
+            ValuedOperand::core_zero() => vo.hash(hasher),
+            ValuedOperand::core_cop0d(_) => vo.hash(hasher),
+            ValuedOperand::core_cop0cd(_) => vo.hash(hasher),
+            ValuedOperand::core_fs(_) => vo.hash(hasher),
+            ValuedOperand::core_ft(_) => vo.hash(hasher),
+            ValuedOperand::core_fd(_) => vo.hash(hasher),
+            // ValuedOperand::core_cop1cs(_) => {}
+            // ValuedOperand::core_cop2t(_) => {}
+            // ValuedOperand::core_cop2d(_) => {}
+            // ValuedOperand::core_cop2cd(_) => {}
+            // ValuedOperand::core_op(_) => {}
+            // ValuedOperand::core_hint(_) => {}
+            // ValuedOperand::core_code(_, _) => {}
+            // ValuedOperand::core_code_lower(_) => {}
+            // ValuedOperand::core_copraw(_) => {}
+            ValuedOperand::core_label(_) => {
+                if !hashed_reloc {
+                    vo.hash(hasher);
                 }
             }
+            ValuedOperand::core_imm_i16(_) => {
+                if !hashed_reloc {
+                    vo.hash(hasher);
+                }
+            }
+            ValuedOperand::core_imm_u16(_) => {
+                if !hashed_reloc {
+                    vo.hash(hasher);
+                }
+            }
+            ValuedOperand::core_branch_target_label(_) => {
+                vo.hash(hasher);
+            }
+            ValuedOperand::core_imm_rs(_, gpr) => {
+                if !hashed_reloc {
+                    vo.hash(hasher);
+                } else {
+                    gpr.hash(hasher);
+                }
+            }
+            // ValuedOperand::core_maybe_rd_rs(_, _) => {}
+            // ValuedOperand::core_maybe_zero_rs(_, _) => {}
+            // ValuedOperand::rsp_cop0d(_) => {}
+            // ValuedOperand::rsp_cop2cd(_) => {}
+            // ValuedOperand::rsp_vs(_) => {}
+            // ValuedOperand::rsp_vd(_) => {}
+            // ValuedOperand::rsp_vt_elementhigh(_, _) => {}
+            // ValuedOperand::rsp_vt_elementlow(_, _) => {}
+            // ValuedOperand::rsp_vd_de(_, _) => {}
+            // ValuedOperand::rsp_vs_index(_, _) => {}
+            // ValuedOperand::rsp_offset_rs(_, _) => {}
+            // ValuedOperand::r3000gte_sf(_) => {}
+            // ValuedOperand::r3000gte_mx(_) => {}
+            // ValuedOperand::r3000gte_v(_) => {}
+            // ValuedOperand::r3000gte_cv(_) => {}
+            // ValuedOperand::r3000gte_lm(_) => {}
+            // ValuedOperand::r4000allegrex_s_vs(_) => {}
+            // ValuedOperand::r4000allegrex_s_vt(_) => {}
+            // ValuedOperand::r4000allegrex_s_vd(_) => {}
+            // ValuedOperand::r4000allegrex_s_vt_imm(_) => {}
+            // ValuedOperand::r4000allegrex_s_vd_imm(_) => {}
+            // ValuedOperand::r4000allegrex_p_vs(_) => {}
+            // ValuedOperand::r4000allegrex_p_vt(_) => {}
+            // ValuedOperand::r4000allegrex_p_vd(_) => {}
+            // ValuedOperand::r4000allegrex_t_vs(_) => {}
+            // ValuedOperand::r4000allegrex_t_vt(_) => {}
+            // ValuedOperand::r4000allegrex_t_vd(_) => {}
+            // ValuedOperand::r4000allegrex_q_vs(_) => {}
+            // ValuedOperand::r4000allegrex_q_vt(_) => {}
+            // ValuedOperand::r4000allegrex_q_vd(_) => {}
+            // ValuedOperand::r4000allegrex_q_vt_imm(_) => {}
+            // ValuedOperand::r4000allegrex_mp_vs(_) => {}
+            // ValuedOperand::r4000allegrex_mp_vt(_) => {}
+            // ValuedOperand::r4000allegrex_mp_vd(_) => {}
+            // ValuedOperand::r4000allegrex_mp_vs_transpose(_) => {}
+            // ValuedOperand::r4000allegrex_mt_vs(_) => {}
+            // ValuedOperand::r4000allegrex_mt_vt(_) => {}
+            // ValuedOperand::r4000allegrex_mt_vd(_) => {}
+            // ValuedOperand::r4000allegrex_mt_vs_transpose(_) => {}
+            // ValuedOperand::r4000allegrex_mq_vs(_) => {}
+            // ValuedOperand::r4000allegrex_mq_vt(_) => {}
+            // ValuedOperand::r4000allegrex_mq_vd(_) => {}
+            // ValuedOperand::r4000allegrex_mq_vs_transpose(_) => {}
+            // ValuedOperand::r4000allegrex_cop2cs(_) => {}
+            // ValuedOperand::r4000allegrex_cop2cd(_) => {}
+            // ValuedOperand::r4000allegrex_pos(_) => {}
+            // ValuedOperand::r4000allegrex_size(_) => {}
+            // ValuedOperand::r4000allegrex_size_plus_pos(_) => {}
+            // ValuedOperand::r4000allegrex_imm3(_) => {}
+            // ValuedOperand::r4000allegrex_offset14_base(_, _) => {}
+            // ValuedOperand::r4000allegrex_offset14_base_maybe_wb(_, _, _) => {}
+            // ValuedOperand::r4000allegrex_vcmp_cond_s_maybe_vs_maybe_vt(_, _, _) => {}
+            // ValuedOperand::r4000allegrex_vcmp_cond_p_maybe_vs_maybe_vt(_, _, _) => {}
+            // ValuedOperand::r4000allegrex_vcmp_cond_t_maybe_vs_maybe_vt(_, _, _) => {}
+            // ValuedOperand::r4000allegrex_vcmp_cond_q_maybe_vs_maybe_vt(_, _, _) => {}
+            // ValuedOperand::r4000allegrex_vconstant(_) => {}
+            // ValuedOperand::r4000allegrex_power_of_two(_) => {}
+            // ValuedOperand::r4000allegrex_vfpu_cc_bit(_) => {}
+            // ValuedOperand::r4000allegrex_bn(_) => {}
+            // ValuedOperand::r4000allegrex_int16(_) => {}
+            // ValuedOperand::r4000allegrex_float16(_) => {}
+            // ValuedOperand::r4000allegrex_p_vrot_code(_) => {}
+            // ValuedOperand::r4000allegrex_t_vrot_code(_) => {}
+            // ValuedOperand::r4000allegrex_q_vrot_code(_) => {}
+            // ValuedOperand::r4000allegrex_wpx(_) => {}
+            // ValuedOperand::r4000allegrex_wpy(_) => {}
+            // ValuedOperand::r4000allegrex_wpz(_) => {}
+            // ValuedOperand::r4000allegrex_wpw(_) => {}
+            // ValuedOperand::r4000allegrex_rpx(_) => {}
+            // ValuedOperand::r4000allegrex_rpy(_) => {}
+            // ValuedOperand::r4000allegrex_rpz(_) => {}
+            // ValuedOperand::r4000allegrex_rpw(_) => {}
+            // ValuedOperand::r5900ee_I() => {}
+            // ValuedOperand::r5900ee_Q() => {}
+            // ValuedOperand::r5900ee_R() => {}
+            // ValuedOperand::r5900ee_ACC() => {}
+            // ValuedOperand::r5900ee_immediate5(_) => {}
+            // ValuedOperand::r5900ee_immediate15(_) => {}
+            // ValuedOperand::r5900ee_vfs(_) => {}
+            // ValuedOperand::r5900ee_vft(_) => {}
+            // ValuedOperand::r5900ee_vfd(_) => {}
+            // ValuedOperand::r5900ee_vis(_) => {}
+            // ValuedOperand::r5900ee_vit(_) => {}
+            // ValuedOperand::r5900ee_vid(_) => {}
+            // ValuedOperand::r5900ee_ACCxyzw(_, _, _, _) => {}
+            // ValuedOperand::r5900ee_vfsxyzw(_, _, _, _, _) => {}
+            // ValuedOperand::r5900ee_vftxyzw(_, _, _, _, _) => {}
+            // ValuedOperand::r5900ee_vfdxyzw(_, _, _, _, _) => {}
+            // ValuedOperand::r5900ee_vftn(_, _) => {}
+            // ValuedOperand::r5900ee_vfsl(_, _) => {}
+            // ValuedOperand::r5900ee_vftm(_, _) => {}
+            // ValuedOperand::r5900ee_vis_predecr(_, _) => {}
+            // ValuedOperand::r5900ee_vit_predecr(_, _) => {}
+            // ValuedOperand::r5900ee_vis_postincr(_, _) => {}
+            // ValuedOperand::r5900ee_vit_postincr(_, _) => {}
+            // ValuedOperand::r5900ee_vis_parenthesis(_) => {}
+            _ => vo.hash(hasher),
         }
-        Insn::Ppc(insn) => {
-            // hash opcode
-            insn.op.hash(hasher);
+    }
+}
 
-            // hash operands
-            for a in insn.basic().args {
-                match a {
-                    powerpc::Argument::None => {}
-                    powerpc::Argument::Simm(_)
-                    | powerpc::Argument::Uimm(_)
-                    | powerpc::Argument::Offset(_)
-                    | powerpc::Argument::BranchDest(_)
-                    | powerpc::Argument::OpaqueU(_) => {
-                        if !hashed_reloc {
-                            a.hash(hasher);
-                        }
-                    }
-                    _ => a.hash(hasher),
+fn hash_ppc_args(insn: powerpc::Ins, hasher: &mut DefaultHasher, hashed_reloc: bool) {
+    // hash opcode
+    insn.op.hash(hasher);
+
+    // hash operands
+    for a in insn.basic().args {
+        match a {
+            powerpc::Argument::None => {}
+            powerpc::Argument::Simm(_)
+            | powerpc::Argument::Uimm(_)
+            | powerpc::Argument::Offset(_)
+            | powerpc::Argument::BranchDest(_)
+            | powerpc::Argument::OpaqueU(_) => {
+                if !hashed_reloc {
+                    a.hash(hasher);
                 }
             }
+            _ => a.hash(hasher),
         }
-        Insn::Thumb(insn) => {
-            // hash opcode
-            (insn.op as u16).hash(hasher);
+    }
+}
 
-            // hash operands
-            for a in insn
-                .parse(&unarm::ParseFlags {
-                    ual: true,
-                    version: unarm::ArmVersion::V4T,
-                })
-                .args_iter()
-            {
-                match a {
-                    unarm::args::Argument::None => {}
-                    unarm::args::Argument::Reg(_) => a.hash(hasher),
-                    unarm::args::Argument::RegList(_) => a.hash(hasher),
-                    unarm::args::Argument::CoReg(_) => a.hash(hasher),
-                    unarm::args::Argument::StatusReg(_) => a.hash(hasher),
-                    unarm::args::Argument::StatusMask(_) => a.hash(hasher),
-                    unarm::args::Argument::Shift(_) => a.hash(hasher),
-                    unarm::args::Argument::ShiftImm(_)
-                    | unarm::args::Argument::ShiftReg(_)
-                    | unarm::args::Argument::UImm(_)
-                    | unarm::args::Argument::SatImm(_)
-                    | unarm::args::Argument::SImm(_)
-                    | unarm::args::Argument::OffsetImm(_)
-                    | unarm::args::Argument::OffsetReg(_)
-                    | unarm::args::Argument::BranchDest(_) => {
-                        if !hashed_reloc {
-                            a.hash(hasher);
-                        }
-                    }
+fn hash_thumb_args(insn: unarm::thumb::Ins, hasher: &mut DefaultHasher, hashed_reloc: bool) {
+    // hash opcode
+    (insn.op as u16).hash(hasher);
 
-                    unarm::args::Argument::CoOption(_) => a.hash(hasher),
-                    unarm::args::Argument::CoOpcode(_) => a.hash(hasher),
-                    unarm::args::Argument::CoprocNum(_) => a.hash(hasher),
-                    unarm::args::Argument::CpsrMode(_) => a.hash(hasher),
-                    unarm::args::Argument::CpsrFlags(_) => a.hash(hasher),
-                    unarm::args::Argument::Endian(_) => a.hash(hasher),
+    // hash operands
+    for a in insn
+        .parse(&unarm::ParseFlags {
+            ual: true,
+            version: unarm::ArmVersion::V4T,
+        })
+        .args_iter()
+    {
+        match a {
+            unarm::args::Argument::None => {}
+            unarm::args::Argument::Reg(_) => a.hash(hasher),
+            unarm::args::Argument::RegList(_) => a.hash(hasher),
+            unarm::args::Argument::CoReg(_) => a.hash(hasher),
+            unarm::args::Argument::StatusReg(_) => a.hash(hasher),
+            unarm::args::Argument::StatusMask(_) => a.hash(hasher),
+            unarm::args::Argument::Shift(_) => a.hash(hasher),
+            unarm::args::Argument::ShiftImm(_)
+            | unarm::args::Argument::ShiftReg(_)
+            | unarm::args::Argument::UImm(_)
+            | unarm::args::Argument::SatImm(_)
+            | unarm::args::Argument::SImm(_)
+            | unarm::args::Argument::OffsetImm(_)
+            | unarm::args::Argument::OffsetReg(_)
+            | unarm::args::Argument::BranchDest(_) => {
+                if !hashed_reloc {
+                    a.hash(hasher);
                 }
             }
+            unarm::args::Argument::CoOption(_) => a.hash(hasher),
+            unarm::args::Argument::CoOpcode(_) => a.hash(hasher),
+            unarm::args::Argument::CoprocNum(_) => a.hash(hasher),
+            unarm::args::Argument::CpsrMode(_) => a.hash(hasher),
+            unarm::args::Argument::CpsrFlags(_) => a.hash(hasher),
+            unarm::args::Argument::Endian(_) => a.hash(hasher),
         }
     }
 }

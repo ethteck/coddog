@@ -128,6 +128,16 @@ impl Platform {
             //Platform::Switch => Arch::Aarch64,
         }
     }
+
+    /// Get the ARM version for Thumb-based platforms
+    pub fn arm_version(&self) -> unarm::ArmVersion {
+        match self {
+            Platform::Gba => unarm::ArmVersion::V4T,
+            Platform::Nds => unarm::ArmVersion::V5Te,
+            Platform::N3ds => unarm::ArmVersion::V6K,
+            _ => unreachable!("arm_version() called on non-ARM platform"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
