@@ -1,9 +1,8 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::{Platform, Symbol, arch};
+use crate::{OBJDIFF_CONFIG, Platform, Symbol, arch};
 use anyhow::{Result, anyhow};
 use mapfile_parser::MapFile;
-use objdiff_core::diff::DiffObjConfig;
 use objdiff_core::obj::{ResolvedSymbol, SymbolFlag};
 
 pub fn read_elf(
@@ -11,9 +10,7 @@ pub fn read_elf(
     unmatched_funcs: &Option<Vec<String>>,
     elf_data: &[u8],
 ) -> Result<Vec<Symbol>> {
-    let config = DiffObjConfig::default();
-
-    let objdiff_obj = objdiff_core::obj::read::parse(elf_data, &config)
+    let objdiff_obj = objdiff_core::obj::read::parse(elf_data, &OBJDIFF_CONFIG)
         .map_err(|e| anyhow!("Failed to parse ELF object: {}", e))?;
 
     let symbols = objdiff_obj
@@ -79,7 +76,7 @@ pub fn read_elf(
                         section,
                         data: &bytes,
                     },
-                    &config,
+                    &OBJDIFF_CONFIG,
                 )
                 .unwrap();
 

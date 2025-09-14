@@ -3,8 +3,11 @@ pub mod ingest;
 
 use anyhow::Result;
 use editdistancek::edit_distance_bounded;
-use objdiff_core::diff::DiffObjConfig;
 use objdiff_core::diff::display::DiffText;
+use objdiff_core::diff::{
+    ArmArchVersion, ArmR9Usage, DiffObjConfig, FunctionRelocDiffs, MipsAbi, MipsInstrCategory,
+    X86Formatter,
+};
 use object::Endianness;
 use serde::Serialize;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -185,6 +188,27 @@ pub struct InsnSeqMatch {
     pub length: usize,
 }
 
+const OBJDIFF_CONFIG: DiffObjConfig = DiffObjConfig {
+    function_reloc_diffs: FunctionRelocDiffs::None,
+    analyze_data_flow: false,
+    show_data_flow: false,
+    space_between_args: true,
+    combine_data_sections: false,
+    combine_text_sections: false,
+    arm_arch_version: ArmArchVersion::Auto,
+    arm_unified_syntax: false,
+    arm_av_registers: false,
+    arm_r9_usage: ArmR9Usage::GeneralPurpose,
+    arm_sl_usage: false,
+    arm_fp_usage: false,
+    arm_ip_usage: false,
+    mips_abi: MipsAbi::Auto,
+    mips_instr_category: MipsInstrCategory::Auto,
+    mips_register_prefix: false,
+    ppc_calculate_pool_relocations: false,
+    x86_formatter: X86Formatter::Intel,
+};
+
 pub fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
     let mut data = data.to_vec();
 
@@ -296,14 +320,10 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
     let object_bytes = std::fs::read(object_path)
         .map_err(|e| anyhow::anyhow!("Failed to read object file at {}: {}", object_path, e))?;
 
-    let diff_config = DiffObjConfig {
-        analyze_data_flow: false,
-        ppc_calculate_pool_relocations: false,
-        ..Default::default()
-    };
-    let object = objdiff_core::obj::read::parse(&object_bytes, &diff_config)?;
+    let object = objdiff_core::obj::read::parse(&object_bytes, &OBJDIFF_CONFIG)?;
 
-    let diff = objdiff_core::diff::code::no_diff_code(&object, symbol_idx as usize, &diff_config)?;
+    let diff =
+        objdiff_core::diff::code::no_diff_code(&object, symbol_idx as usize, &OBJDIFF_CONFIG)?;
 
     let mut ret = Vec::new();
     let mut current_insn: Option<AsmInsn> = None;
@@ -313,7 +333,7 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
             &object,
             symbol_idx as usize,
             row,
-            &diff_config,
+            &OBJDIFF_CONFIG,
             |segment| {
                 match segment.text {
                     DiffText::Eol => {
