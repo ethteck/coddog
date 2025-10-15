@@ -261,7 +261,13 @@ fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<
         Platform::from_name(platform).unwrap_or_else(|| panic!("Invalid platform: {platform}"));
 
     if let Some(elf_path) = get_full_path(base_dir, config.paths.elf.clone()) {
-        let elf_data = fs::read(elf_path)?;
+        let elf_data = fs::read(&elf_path).map_err(|e| {
+            anyhow!(
+                "Failed to read ELF file at {}: {}",
+                elf_path.to_string_lossy(),
+                e
+            )
+        })?;
         return read_elf(platform, &unmatched_funcs, &elf_data);
     }
 

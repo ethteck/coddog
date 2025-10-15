@@ -396,7 +396,7 @@ fn hash_ppc_args(insn: powerpc::Ins, hasher: &mut DefaultHasher, hashed_reloc: b
     }
 }
 
-fn hash_thumb_args(insn: unarm::Ins, hasher: &mut DefaultHasher, hashed_reloc: bool) {
+fn hash_thumb_args(insn: unarm::Ins, hasher: &mut DefaultHasher, _hashed_reloc: bool) {
     // hash opcode
     insn.discriminant().hash(hasher);
 

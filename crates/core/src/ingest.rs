@@ -25,7 +25,6 @@ pub fn read_elf(
                 && s.section.is_some() // not extern
                 && s.kind == objdiff_core::obj::SymbolKind::Function
                 && !s.flags.contains(SymbolFlag::Hidden)
-                && !s.flags.contains(SymbolFlag::Ignored)
             {
                 Some((idx, s))
             } else {
@@ -63,7 +62,7 @@ pub fn read_elf(
                 });
 
             if let Err(e) = data {
-                eprintln!("Error getting symbol data: {}", e);
+                eprintln!("Error getting symbol data for {}: {}", symbol.name, e);
                 return None; // Skip this symbol if data is out of bounds
             }
             let bytes: Vec<u8> = data.unwrap().to_vec();
