@@ -5,8 +5,8 @@ use anyhow::Result;
 use editdistancek::edit_distance_bounded;
 use objdiff_core::diff::display::DiffText;
 use objdiff_core::diff::{
-    ArmArchVersion, ArmR9Usage, DiffObjConfig, FunctionRelocDiffs, MipsAbi, MipsInstrCategory,
-    X86Formatter,
+    ArmArchVersion, ArmR9Usage, Demangler, DiffObjConfig, DiffSide, FunctionRelocDiffs, MipsAbi,
+    MipsInstrCategory, ShowSymbolSizes, X86Formatter,
 };
 use object::Endianness;
 use serde::Serialize;
@@ -133,11 +133,11 @@ impl Platform {
     }
 
     /// Get the ARM version for Thumb-based platforms
-    pub fn arm_version(&self) -> unarm::ArmVersion {
+    pub fn arm_version(&self) -> unarm::Version {
         match self {
-            Platform::Gba => unarm::ArmVersion::V4T,
-            Platform::Nds => unarm::ArmVersion::V5Te,
-            Platform::N3ds => unarm::ArmVersion::V6K,
+            Platform::Gba => unarm::Version::V4T,
+            Platform::Nds => unarm::Version::V5Te,
+            Platform::N3ds => unarm::Version::V6K,
             _ => unreachable!("arm_version() called on non-ARM platform"),
         }
     }
@@ -190,12 +190,15 @@ pub struct InsnSeqMatch {
 
 const OBJDIFF_CONFIG: DiffObjConfig = DiffObjConfig {
     function_reloc_diffs: FunctionRelocDiffs::None,
+    demangler: Demangler::Auto,
     analyze_data_flow: false,
     show_data_flow: false,
     space_between_args: true,
+    show_symbol_sizes: ShowSymbolSizes::Off,
     combine_data_sections: false,
     combine_text_sections: false,
     arm_arch_version: ArmArchVersion::Auto,
+    arm_vfp_v2: true,
     arm_unified_syntax: false,
     arm_av_registers: false,
     arm_r9_usage: ArmR9Usage::GeneralPurpose,
@@ -320,7 +323,7 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
     let object_bytes = std::fs::read(object_path)
         .map_err(|e| anyhow::anyhow!("Failed to read object file at {}: {}", object_path, e))?;
 
-    let object = objdiff_core::obj::read::parse(&object_bytes, &OBJDIFF_CONFIG)?;
+    let object = objdiff_core::obj::read::parse(&object_bytes, &OBJDIFF_CONFIG, DiffSide::Base)?;
 
     let diff =
         objdiff_core::diff::code::no_diff_code(&object, symbol_idx as usize, &OBJDIFF_CONFIG)?;

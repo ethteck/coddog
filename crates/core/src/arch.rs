@@ -1,16 +1,17 @@
 use crate::{Arch, Platform};
-use objdiff_core::obj::{InstructionRef, Object, Section};
+use objdiff_core::obj::{InstructionRef, Section};
 use object::Endian;
 use rabbitizer::IsaExtension::{R3000GTE, R4000ALLEGREX, R5900EE};
 use rabbitizer::IsaVersion::MIPS_III;
 use rabbitizer::operands::ValuedOperand;
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use unarm::parse_thumb;
 
 enum Insn {
     Mips(rabbitizer::Instruction),
     Ppc(powerpc::Ins),
-    Thumb(unarm::thumb::Ins),
+    Thumb(unarm::Ins),
 }
 
 fn get_rabbitizer_instruction(word: u32, vram: u32, platform: Platform) -> rabbitizer::Instruction {
@@ -57,14 +58,9 @@ pub fn get_opcodes_raw(bytes: &[u8], platform: Platform) -> Vec<u16> {
                 let code = platform
                     .endianness()
                     .read_u16_bytes(chunk.try_into().unwrap());
-                let ins = unarm::thumb::Ins::new(
-                    code as u32,
-                    &unarm::ParseFlags {
-                        ual: true,
-                        version: platform.arm_version(),
-                    },
-                );
-                ins.op as u16
+
+                let (ins, _) = parse_thumb(code.into(), 0, &unarm::Options::default());
+                ins.discriminant()
             })
             .collect(),
     }
@@ -94,24 +90,35 @@ fn decode_instruction(
             powerpc::Extensions::gekko_broadway(),
         ))),
         Arch::Thumb => match insn_ref.size {
-            2 => Ok(Insn::Thumb(unarm::thumb::Ins::new(
-                platform
+            2 => {
+                let ins = platform
                     .endianness()
-                    .read_u16_bytes(insn_bytes.try_into().unwrap()) as u32,
-                &unarm::ParseFlags {
-                    ual: true,
-                    version: platform.arm_version(),
-                },
-            ))),
-            4 => Ok(Insn::Thumb(unarm::thumb::Ins::new(
-                platform
+                    .read_u16_bytes(insn_bytes.try_into().unwrap())
+                    as u32;
+                let (i, _) = parse_thumb(
+                    ins,
+                    0,
+                    &unarm::Options {
+                        version: platform.arm_version(),
+                        ..Default::default()
+                    },
+                );
+                Ok(Insn::Thumb(i))
+            }
+            4 => {
+                let ins = platform
                     .endianness()
-                    .read_u32_bytes(insn_bytes.try_into().unwrap()),
-                &unarm::ParseFlags {
-                    ual: true,
-                    version: platform.arm_version(),
-                },
-            ))),
+                    .read_u32_bytes(insn_bytes.try_into().unwrap());
+                let (i, _) = parse_thumb(
+                    ins,
+                    0,
+                    &unarm::Options {
+                        version: platform.arm_version(),
+                        ..Default::default()
+                    },
+                );
+                Ok(Insn::Thumb(i))
+            }
             _ => Err(anyhow::anyhow!(
                 "Unexpected instruction size {} for Thumb",
                 insn_ref.size
@@ -123,7 +130,6 @@ fn decode_instruction(
 pub(crate) fn get_equivalence_hash(
     bytes: &[u8],
     platform: Platform,
-    object: &Object,
     section: &Section,
     insn_refs: &Vec<InstructionRef>,
 ) -> u64 {
@@ -142,14 +148,10 @@ pub(crate) fn get_equivalence_hash(
         }
 
         // Hash the unique id for the relocation entry rather than the specifics
-        if let Some(reloc) = section.relocation_at(object, *insn_ref) {
+        if let Some(reloc) = section.relocation_at(insn_ref.address, insn_ref.size) {
             let next_id = reloc_ids.len();
             let hash_id = *reloc_ids
-                .entry((
-                    reloc.relocation.target_symbol,
-                    reloc.relocation.addend,
-                    reloc.relocation.flags,
-                ))
+                .entry((reloc.target_symbol, reloc.addend, reloc.flags))
                 .or_insert(next_id);
             hash_id.hash(&mut hasher);
             hashed_reloc = true;
@@ -394,44 +396,43 @@ fn hash_ppc_args(insn: powerpc::Ins, hasher: &mut DefaultHasher, hashed_reloc: b
     }
 }
 
-fn hash_thumb_args(insn: unarm::thumb::Ins, hasher: &mut DefaultHasher, hashed_reloc: bool) {
+fn hash_thumb_args(insn: unarm::Ins, hasher: &mut DefaultHasher, hashed_reloc: bool) {
     // hash opcode
-    (insn.op as u16).hash(hasher);
+    insn.discriminant().hash(hasher);
 
     // hash operands
-    for a in insn
-        .parse(&unarm::ParseFlags {
-            ual: true,
-            version: unarm::ArmVersion::V4T,
-        })
-        .args_iter()
-    {
-        match a {
-            unarm::args::Argument::None => {}
-            unarm::args::Argument::Reg(_) => a.hash(hasher),
-            unarm::args::Argument::RegList(_) => a.hash(hasher),
-            unarm::args::Argument::CoReg(_) => a.hash(hasher),
-            unarm::args::Argument::StatusReg(_) => a.hash(hasher),
-            unarm::args::Argument::StatusMask(_) => a.hash(hasher),
-            unarm::args::Argument::Shift(_) => a.hash(hasher),
-            unarm::args::Argument::ShiftImm(_)
-            | unarm::args::Argument::ShiftReg(_)
-            | unarm::args::Argument::UImm(_)
-            | unarm::args::Argument::SatImm(_)
-            | unarm::args::Argument::SImm(_)
-            | unarm::args::Argument::OffsetImm(_)
-            | unarm::args::Argument::OffsetReg(_)
-            | unarm::args::Argument::BranchDest(_) => {
-                if !hashed_reloc {
-                    a.hash(hasher);
-                }
-            }
-            unarm::args::Argument::CoOption(_) => a.hash(hasher),
-            unarm::args::Argument::CoOpcode(_) => a.hash(hasher),
-            unarm::args::Argument::CoprocNum(_) => a.hash(hasher),
-            unarm::args::Argument::CpsrMode(_) => a.hash(hasher),
-            unarm::args::Argument::CpsrFlags(_) => a.hash(hasher),
-            unarm::args::Argument::Endian(_) => a.hash(hasher),
-        }
-    }
+    // for a in insn.parse(&unarm::ParseFlags {
+    //         ual: true,
+    //         version: unarm::ArmVersion::V4T,
+    //     })
+    //     .args_iter()
+    // {
+    //     match a {
+    //         unarm::args::Argument::None => {}
+    //         unarm::args::Argument::Reg(_) => a.hash(hasher),
+    //         unarm::args::Argument::RegList(_) => a.hash(hasher),
+    //         unarm::args::Argument::CoReg(_) => a.hash(hasher),
+    //         unarm::args::Argument::StatusReg(_) => a.hash(hasher),
+    //         unarm::args::Argument::StatusMask(_) => a.hash(hasher),
+    //         unarm::args::Argument::Shift(_) => a.hash(hasher),
+    //         unarm::args::Argument::ShiftImm(_)
+    //         | unarm::args::Argument::ShiftReg(_)
+    //         | unarm::args::Argument::UImm(_)
+    //         | unarm::args::Argument::SatImm(_)
+    //         | unarm::args::Argument::SImm(_)
+    //         | unarm::args::Argument::OffsetImm(_)
+    //         | unarm::args::Argument::OffsetReg(_)
+    //         | unarm::args::Argument::BranchDest(_) => {
+    //             if !hashed_reloc {
+    //                 a.hash(hasher);
+    //             }
+    //         }
+    //         unarm::args::Argument::CoOption(_) => a.hash(hasher),
+    //         unarm::args::Argument::CoOpcode(_) => a.hash(hasher),
+    //         unarm::args::Argument::CoprocNum(_) => a.hash(hasher),
+    //         unarm::args::Argument::CpsrMode(_) => a.hash(hasher),
+    //         unarm::args::Argument::CpsrFlags(_) => a.hash(hasher),
+    //         unarm::args::Argument::Endian(_) => a.hash(hasher),
+    //     }
+    // }
 }

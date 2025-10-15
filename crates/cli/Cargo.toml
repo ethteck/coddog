@@ -21,6 +21,6 @@ coddog-core = { path = "../core" }
 colored = "3.0.0"
 decomp_settings = "0.0.9"
 glob = "0.3.3"
-inquire = "0.7.5"
+inquire = "0.9.1"
 itertools = "0.14.0"
 tokio = { version = "1.47.1", features = ["macros", "rt-multi-thread"] }

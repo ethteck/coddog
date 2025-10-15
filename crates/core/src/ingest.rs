@@ -3,14 +3,17 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::{OBJDIFF_CONFIG, Platform, Symbol, arch};
 use anyhow::{Result, anyhow};
 use mapfile_parser::MapFile;
-use objdiff_core::obj::{ResolvedSymbol, SymbolFlag};
+use objdiff_core::{
+    diff::DiffSide,
+    obj::{ResolvedSymbol, SymbolFlag},
+};
 
 pub fn read_elf(
     platform: Platform,
     unmatched_funcs: &Option<Vec<String>>,
     elf_data: &[u8],
 ) -> Result<Vec<Symbol>> {
-    let objdiff_obj = objdiff_core::obj::read::parse(elf_data, &OBJDIFF_CONFIG)
+    let objdiff_obj = objdiff_core::obj::read::parse(elf_data, &OBJDIFF_CONFIG, DiffSide::Base)
         .map_err(|e| anyhow!("Failed to parse ELF object: {}", e))?;
 
     let symbols = objdiff_obj
@@ -86,8 +89,7 @@ pub fn read_elf(
             bytes.hash(&mut hasher);
             let exact_hash = hasher.finish();
 
-            let equiv_hash =
-                arch::get_equivalence_hash(&bytes, platform, &objdiff_obj, section, &insn_refs);
+            let equiv_hash = arch::get_equivalence_hash(&bytes, platform, section, &insn_refs);
 
             let opcodes: Vec<u16> = insn_refs.iter().map(|r| r.opcode).collect();
             let mut hasher = DefaultHasher::new();

@@ -502,10 +502,12 @@ async fn main() -> Result<()> {
                 let config = read_config(yaml.clone())?;
                 let cur_platform = Platform::from_name(&config.platform).unwrap();
 
-                if platform.is_none() {
+                if let Some(plat) = platform {
+                    if plat != cur_platform {
+                        return Err(anyhow!("All projects must be for the same platform"));
+                    }
+                } else {
                     platform = Some(cur_platform);
-                } else if platform.unwrap() != cur_platform {
-                    return Err(anyhow!("All projects must be for the same platform"));
                 }
 
                 for version in &config.versions {
