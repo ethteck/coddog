@@ -12,28 +12,28 @@
     "preview": "rsbuild preview"
   },
   "dependencies": {
-    "@base-ui-components/react": "1.0.0-beta.2",
-    "@tanstack/react-pacer": "^0.8.0",
-    "@tanstack/react-query": "^5.85.9",
-    "@tanstack/react-query-devtools": "^5.85.9",
-    "@tanstack/react-router": "^1.131.32",
-    "@tanstack/react-router-devtools": "^1.131.32",
-    "@tanstack/zod-adapter": "^1.131.32",
-    "lucide-react": "^0.542.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "@base-ui-components/react": "1.0.0-beta.4",
+    "@tanstack/react-pacer": "^0.16.4",
+    "@tanstack/react-query": "^5.90.6",
+    "@tanstack/react-query-devtools": "^5.90.2",
+    "@tanstack/react-router": "^1.134.9",
+    "@tanstack/react-router-devtools": "^1.134.9",
+    "@tanstack/zod-adapter": "^1.134.9",
+    "lucide-react": "^0.552.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "slider": "link:@base-ui-components/react/slider",
-    "zod": "^4.1.5"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.4",
-    "@rsbuild/core": "^1.5.3",
-    "@rsbuild/plugin-react": "^1.4.0",
+    "@biomejs/biome": "2.3.2",
+    "@rsbuild/core": "^1.6.0",
+    "@rsbuild/plugin-react": "^1.4.1",
     "@rsbuild/plugin-svgr": "^1.2.2",
-    "@tanstack/eslint-plugin-query": "^5.83.1",
-    "@tanstack/router-plugin": "^1.131.32",
-    "@types/react": "^19.1.12",
-    "@types/react-dom": "^19.1.9",
-    "typescript": "^5.9.2"
+    "@tanstack/eslint-plugin-query": "^5.91.2",
+    "@tanstack/router-plugin": "^1.134.9",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "typescript": "^5.9.3"
   }
 }

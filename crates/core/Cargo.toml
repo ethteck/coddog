@@ -19,4 +19,4 @@ mapfile_parser = "2.12.0"
 powerpc = "0.4"
 rabbitizer = { version = "2.0.0-alpha.7", features = ["all_extensions"] }
 serde = { version = "1.0", features = ["derive"] }
-unarm = { version = "2.0.1" }
+unarm = { version = "2.1.0" }

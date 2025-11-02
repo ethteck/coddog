@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginSvgr } from '@rsbuild/plugin-svgr';
-// @ts-ignore
+// @ts-expect-error
 import TanStackRouterRspack from '@tanstack/router-plugin/rspack';
 
 // Get the current git hash at build time
