@@ -569,12 +569,6 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                 )
                 .await?;
 
-                // let skips = vec!["996k9", "gDP9Y", "RiLDB", "gcxsC"];
-                //
-                // if skips.contains(&&*scratch.slug) {
-                //     continue;
-                // }
-
                 let symbols = read_elf(platform, &None, &elf_object.elf_object);
 
                 if let Err(e) = symbols {

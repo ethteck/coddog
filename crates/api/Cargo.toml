@@ -12,14 +12,14 @@ An api for finding matching sequences of code among binaries
 publish = false
 
 [dependencies]
-axum = "0.8.6"
+axum = "0.8.8"
 axum-validated-extractors = "0.2.0"
 coddog-db = { path = "../db" }
 coddog-core = { path = "../core" }
 dotenvy = "0.15.7"
 serde_json = "1.0"
 sqlx = { version = "0.8", features = ["macros", "migrate", "runtime-tokio", "postgres"] }
-tokio = { version = "1.48.0", features = ["full"] }
-tower-http = { version = "0.6.6", features = ["cors"] }
+tokio = { version = "1.49.0", features = ["full"] }
+tower-http = { version = "0.6.8", features = ["cors"] }
 validator = { version = "0.20.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }

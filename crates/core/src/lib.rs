@@ -387,6 +387,7 @@ pub fn get_asm_for_symbol(object_path: &str, symbol_idx: i32) -> Result<Vec<AsmI
                             insn.addend = Some(add.to_string());
                         }
                     }
+                    DiffText::BranchArrow(_) => {}
                 }
                 Ok(())
             },

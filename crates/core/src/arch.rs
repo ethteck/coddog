@@ -399,40 +399,4 @@ fn hash_ppc_args(insn: powerpc::Ins, hasher: &mut DefaultHasher, hashed_reloc: b
 fn hash_thumb_args(insn: unarm::Ins, hasher: &mut DefaultHasher, _hashed_reloc: bool) {
     // hash opcode
     insn.discriminant().hash(hasher);
-
-    // hash operands
-    // for a in insn.parse(&unarm::ParseFlags {
-    //         ual: true,
-    //         version: unarm::ArmVersion::V4T,
-    //     })
-    //     .args_iter()
-    // {
-    //     match a {
-    //         unarm::args::Argument::None => {}
-    //         unarm::args::Argument::Reg(_) => a.hash(hasher),
-    //         unarm::args::Argument::RegList(_) => a.hash(hasher),
-    //         unarm::args::Argument::CoReg(_) => a.hash(hasher),
-    //         unarm::args::Argument::StatusReg(_) => a.hash(hasher),
-    //         unarm::args::Argument::StatusMask(_) => a.hash(hasher),
-    //         unarm::args::Argument::Shift(_) => a.hash(hasher),
-    //         unarm::args::Argument::ShiftImm(_)
-    //         | unarm::args::Argument::ShiftReg(_)
-    //         | unarm::args::Argument::UImm(_)
-    //         | unarm::args::Argument::SatImm(_)
-    //         | unarm::args::Argument::SImm(_)
-    //         | unarm::args::Argument::OffsetImm(_)
-    //         | unarm::args::Argument::OffsetReg(_)
-    //         | unarm::args::Argument::BranchDest(_) => {
-    //             if !hashed_reloc {
-    //                 a.hash(hasher);
-    //             }
-    //         }
-    //         unarm::args::Argument::CoOption(_) => a.hash(hasher),
-    //         unarm::args::Argument::CoOpcode(_) => a.hash(hasher),
-    //         unarm::args::Argument::CoprocNum(_) => a.hash(hasher),
-    //         unarm::args::Argument::CpsrMode(_) => a.hash(hasher),
-    //         unarm::args::Argument::CpsrFlags(_) => a.hash(hasher),
-    //         unarm::args::Argument::Endian(_) => a.hash(hasher),
-    //     }
-    // }
 }
