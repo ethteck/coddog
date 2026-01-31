@@ -14,6 +14,7 @@ import { Route as CompareRouteImport } from './routes/compare'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SymbolSymbolSlugIndexRouteImport } from './routes/symbol/$symbolSlug/index'
+import { Route as SourceSourceSlugIndexRouteImport } from './routes/source/$sourceSlug/index'
 import { Route as SymbolSymbolSlugSubmatchRouteImport } from './routes/symbol/$symbolSlug/submatch'
 
 const SearchRoute = SearchRouteImport.update({
@@ -41,6 +42,11 @@ const SymbolSymbolSlugIndexRoute = SymbolSymbolSlugIndexRouteImport.update({
   path: '/symbol/$symbolSlug/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SourceSourceSlugIndexRoute = SourceSourceSlugIndexRouteImport.update({
+  id: '/source/$sourceSlug/',
+  path: '/source/$sourceSlug/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SymbolSymbolSlugSubmatchRoute =
   SymbolSymbolSlugSubmatchRouteImport.update({
     id: '/symbol/$symbolSlug/submatch',
@@ -54,7 +60,8 @@ export interface FileRoutesByFullPath {
   '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
-  '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
+  '/source/$sourceSlug/': typeof SourceSourceSlugIndexRoute
+  '/symbol/$symbolSlug/': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
+  '/source/$sourceSlug': typeof SourceSourceSlugIndexRoute
   '/symbol/$symbolSlug': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRoutesById {
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/compare': typeof CompareRoute
   '/search': typeof SearchRoute
   '/symbol/$symbolSlug/submatch': typeof SymbolSymbolSlugSubmatchRoute
+  '/source/$sourceSlug/': typeof SourceSourceSlugIndexRoute
   '/symbol/$symbolSlug/': typeof SymbolSymbolSlugIndexRoute
 }
 export interface FileRouteTypes {
@@ -81,7 +90,8 @@ export interface FileRouteTypes {
     | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
-    | '/symbol/$symbolSlug'
+    | '/source/$sourceSlug/'
+    | '/symbol/$symbolSlug/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
+    | '/source/$sourceSlug'
     | '/symbol/$symbolSlug'
   id:
     | '__root__'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/compare'
     | '/search'
     | '/symbol/$symbolSlug/submatch'
+    | '/source/$sourceSlug/'
     | '/symbol/$symbolSlug/'
   fileRoutesById: FileRoutesById
 }
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   CompareRoute: typeof CompareRoute
   SearchRoute: typeof SearchRoute
   SymbolSymbolSlugSubmatchRoute: typeof SymbolSymbolSlugSubmatchRoute
+  SourceSourceSlugIndexRoute: typeof SourceSourceSlugIndexRoute
   SymbolSymbolSlugIndexRoute: typeof SymbolSymbolSlugIndexRoute
 }
 
@@ -142,8 +155,15 @@ declare module '@tanstack/react-router' {
     '/symbol/$symbolSlug/': {
       id: '/symbol/$symbolSlug/'
       path: '/symbol/$symbolSlug'
-      fullPath: '/symbol/$symbolSlug'
+      fullPath: '/symbol/$symbolSlug/'
       preLoaderRoute: typeof SymbolSymbolSlugIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/source/$sourceSlug/': {
+      id: '/source/$sourceSlug/'
+      path: '/source/$sourceSlug'
+      fullPath: '/source/$sourceSlug/'
+      preLoaderRoute: typeof SourceSourceSlugIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/symbol/$symbolSlug/submatch': {
@@ -162,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   CompareRoute: CompareRoute,
   SearchRoute: SearchRoute,
   SymbolSymbolSlugSubmatchRoute: SymbolSymbolSlugSubmatchRoute,
+  SourceSourceSlugIndexRoute: SourceSourceSlugIndexRoute,
   SymbolSymbolSlugIndexRoute: SymbolSymbolSlugIndexRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,3 +1,10 @@
+INSERT INTO projects (id, name, repo)
+VALUES (0, 'none', NULL);
+
+INSERT INTO users (id, username)
+VALUES (0, 'admin');
+
+-- decomp.me
 INSERT INTO projects (name, repo)
 VALUES ('decomp.me', 'https://decomp.me');
 

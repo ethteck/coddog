@@ -328,17 +328,17 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
                     pb.inc();
                     let obj_bytes = std::fs::read(&obj_file)?;
                     let object_id = coddog_db::objects::create(&mut tx, &obj_bytes).await?;
-                    let source_id = coddog_db::create_source(
+                    let source_id = coddog_db::sources::create(
                         &mut tx,
                         obj_file.file_name().unwrap().to_str().unwrap(),
                         &config.repo,
+                        0,
                         object_id,
                         Option::from(version_id),
                         project_id,
                     )
                     .await?;
 
-                    let obj_bytes = std::fs::read(&obj_file)?;
                     let symbols = read_elf(platform, &None, &obj_bytes)?;
 
                     if !symbols.is_empty() {
@@ -634,10 +634,11 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
 
                 let object_id = coddog_db::objects::create(&mut tx, &elf_object.elf_object).await?;
 
-                let source_id = coddog_db::create_source(
+                let source_id = coddog_db::sources::create(
                     &mut tx,
                     &scratch.slug,
                     &Some(format!("https://decomp.me/scratch/{}", scratch.slug)),
+                    0,
                     object_id,
                     Option::from(version_id),
                     project_id,
@@ -667,7 +668,7 @@ async fn handle_db_command(cmd: &DbCommands) -> Result<()> {
             let pool = coddog_db::init().await?;
             let total_projects = coddog_db::projects::count(pool.clone()).await?;
             let total_versions = coddog_db::count_versions(pool.clone()).await?;
-            let total_sources = coddog_db::count_sources(pool.clone()).await?;
+            let total_sources = coddog_db::sources::count(pool.clone()).await?;
             let total_objects = coddog_db::objects::count(pool.clone()).await?;
             let total_symbols = coddog_db::symbols::count(pool.clone()).await?;
             let total_windows = coddog_db::count_windows(pool.clone()).await?;

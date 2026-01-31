@@ -1,5 +1,11 @@
 CREATE EXTENSION pg_trgm;
 
+CREATE TABLE IF NOT EXISTS users
+(
+    id       BIGSERIAL PRIMARY KEY,
+    username TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS projects
 (
     id   BIGSERIAL PRIMARY KEY,
@@ -27,28 +33,32 @@ CREATE UNIQUE INDEX IF NOT EXISTS hash_idx ON objects (hash);
 CREATE TABLE IF NOT EXISTS sources
 (
     id          BIGSERIAL PRIMARY KEY,
-    name        TEXT   NOT NULL,
-    source_link TEXT   NULL,
-    object_id   BIGINT NOT NULL,
-    version_id  BIGINT NULL,
-    project_id  BIGINT NOT NULL,
-    FOREIGN KEY (object_id) REFERENCES objects (id) ON DELETE CASCADE,
-    FOREIGN KEY (version_id) REFERENCES versions (id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+    slug        TEXT      NOT NULL,
+    name        TEXT      NOT NULL,
+    source_link TEXT      NULL,
+    uploaded_by BIGINT    NOT NULL,
+    object_id   BIGINT    NOT NULL,
+    version_id  BIGINT    NULL,
+    project_id  BIGINT    NOT NULL,
+    FOREIGN KEY (uploaded_by)   REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (object_id)     REFERENCES objects (id) ON DELETE CASCADE,
+    FOREIGN KEY (version_id)    REFERENCES versions (id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id)    REFERENCES projects (id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS sources_slug_idx ON sources (slug);
 
 CREATE TABLE IF NOT EXISTS symbols
 (
     id            BIGSERIAL PRIMARY KEY,
-    slug          TEXT    NOT NULL,
-    len           INT     NOT NULL,
-    name          TEXT    NOT NULL,
-    is_decompiled BOOLEAN NOT NULL DEFAULT FALSE,
-    symbol_idx    INT     NOT NULL,
-    opcode_hash   BIGINT  NOT NULL,
-    equiv_hash    BIGINT  NOT NULL,
-    exact_hash    BIGINT  NOT NULL,
-    source_id     BIGINT  NOT NULL,
+    slug          TEXT      NOT NULL,
+    len           INT       NOT NULL,
+    name          TEXT      NOT NULL,
+    is_decompiled BOOLEAN   NOT NULL DEFAULT FALSE,
+    symbol_idx    INT       NOT NULL,
+    opcode_hash   BIGINT    NOT NULL,
+    equiv_hash    BIGINT    NOT NULL,
+    exact_hash    BIGINT    NOT NULL,
+    source_id     BIGINT    NOT NULL,
     FOREIGN KEY (source_id) REFERENCES sources (id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS opcode_hash_idx ON symbols (opcode_hash);
@@ -109,6 +119,32 @@ CREATE TRIGGER set_symbol_slug_trigger
     ON symbols
     FOR EACH ROW
 EXECUTE FUNCTION set_symbol_slug();
+
+CREATE OR REPLACE FUNCTION set_source_slug() RETURNS TRIGGER AS
+$$
+DECLARE
+    slug_length INTEGER := 5;
+    new_slug    TEXT;
+    slug_exists INTEGER;
+BEGIN
+    -- Generate a new slug and check if it already exists (loop until unique)
+    LOOP
+        new_slug := generate_random_slug(slug_length);
+        SELECT COUNT(*) INTO slug_exists FROM sources WHERE slug = new_slug;
+        EXIT WHEN slug_exists = 0;
+    END LOOP;
+
+    NEW.slug := new_slug;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger to set the slug before inserting a new source
+CREATE TRIGGER set_source_slug_trigger
+    BEFORE INSERT
+    ON sources
+    FOR EACH ROW
+EXECUTE FUNCTION set_source_slug();
 
 -- Migration to add cascading delete for objects when no sources reference them
 

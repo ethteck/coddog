@@ -1,7 +1,7 @@
 mod projects;
 
 use crate::projects::{create_project, delete_project, get_project, get_projects, update_project};
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -9,8 +9,8 @@ use axum_validated_extractors::ValidatedJson;
 use coddog_core::AsmInsn;
 use coddog_db::symbols::QuerySymbolsByNameRequest;
 use coddog_db::{
-    DBSymbol, QueryWindowsRequest, SortDirection, SubmatchResult, SubmatchResultOrder,
-    SymbolMetadata,
+    DBSource, DBSymbol, QueryWindowsRequest, SortDirection, SourceMetadata, SubmatchResult,
+    SubmatchResultOrder, SymbolMetadata,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -55,13 +55,16 @@ async fn main() {
                 .patch(update_project)
                 .delete(delete_project),
         )
+        .route("/sources/{slug}", get(query_sources_by_slug))
         .route("/symbols", post(query_symbols_by_name))
         .route("/symbols/{slug}", get(query_symbols_by_slug))
         .route("/symbols/{slug}/asm", get(get_symbol_asm))
         .route("/symbols/{slug}/match", get(get_symbol_matches))
         .route("/symbols/{slug}/submatch", post(get_symbol_submatches))
+        .route("/upload", post(upload_object))
         .with_state(db_pool)
-        .layer(cors_layer);
+        .layer(cors_layer)
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 5));
 
     axum::serve(listener, app)
         .await
@@ -101,6 +104,27 @@ async fn get_sym_for_slug(pg_pool: PgPool, slug: &str) -> Result<DBSymbol, (Stat
             (
                 StatusCode::NOT_FOUND,
                 json!({"success": false, "message": "Symbol not found"}).to_string(),
+            )
+        })
+}
+
+async fn get_source_for_slug(
+    pg_pool: PgPool,
+    slug: &str,
+) -> Result<DBSource, (StatusCode, String)> {
+    coddog_db::sources::query_by_slug(pg_pool.clone(), slug)
+        .await
+        .map_err(|e| {
+            eprintln!("Error fetching source by slug: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                json!({"success": false, "message": "Source not found"}).to_string(),
             )
         })
 }
@@ -265,6 +289,151 @@ fn validate_sort_by(input: &SubmatchResultOrder) -> Result<(), ValidationError> 
 fn validate_sort_dir(input: &SortDirection) -> Result<(), ValidationError> {
     match input {
         SortDirection::Asc | SortDirection::Desc => Ok(()),
+    }
+}
+
+async fn query_sources_by_slug(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let source = get_source_for_slug(pg_pool, &slug).await?;
+
+    Ok((
+        StatusCode::OK,
+        json!(SourceMetadata::from_db_source(&source)).to_string(),
+    ))
+}
+
+async fn upload_object(
+    State(pg_pool): State<PgPool>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let db_window_size = std::env::var("DB_WINDOW_SIZE")
+        .expect("DB_WINDOW_SIZE must be set")
+        .parse::<i64>()
+        .unwrap();
+
+    match multipart.next_field().await {
+        Ok(None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                json!({"success": false, "message": "No file uploaded"}).to_string(),
+            ));
+        }
+        Err(e) => {
+            eprintln!("Error processing multipart form: {e}");
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            ));
+        }
+        Ok(field) => match field {
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    json!({"success": false, "message": "No file uploaded"}).to_string(),
+                ));
+            }
+            Some(field) => {
+                let name = field.name().unwrap().to_string();
+                let data = field.bytes().await.unwrap();
+
+                println!("Length of `{}` is {} bytes", name, data.len());
+
+                // TODO remove hard-coded platform
+                let symbols =
+                    coddog_core::ingest::read_elf(coddog_core::Platform::N64, &None, &data)
+                        .map_err(|e| {
+                            eprintln!("Error reading ELF: {e}");
+                            (
+                                StatusCode::BAD_REQUEST,
+                                json!({"success": false, "message": e.to_string()}).to_string(),
+                            )
+                        })?;
+
+                if symbols.is_empty() {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        json!({"success": false, "message": "No symbols found in ELF"}).to_string(),
+                    ));
+                }
+
+                let mut tx = pg_pool.begin().await.map_err(|e| {
+                    eprintln!("Error starting transaction: {e}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        json!({"success": false, "message": e.to_string()}).to_string(),
+                    )
+                })?;
+
+                let object_id = coddog_db::objects::create(&mut tx, &data)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Error creating object: {e}");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            json!({"success": false, "message": e.to_string()}).to_string(),
+                        )
+                    })?;
+
+                let source_id = coddog_db::sources::create(
+                    &mut tx, &name, &None, 0, // add user id here
+                    object_id, None, 0,
+                )
+                .await
+                .map_err(|e| {
+                    eprintln!("Error creating source: {e}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        json!({"success": false, "message": e.to_string()}).to_string(),
+                    )
+                })?;
+
+                let symbol_ids =
+                    coddog_db::symbols::create_many(&mut tx, source_id, &symbols).await;
+
+                for (symbol, id) in symbols.iter().zip(symbol_ids) {
+                    let opcode_hashes = symbol.get_opcode_hashes(db_window_size as usize);
+
+                    coddog_db::create_symbol_window_hashes(&mut tx, &opcode_hashes, id)
+                        .await
+                        .map_err(|e| {
+                            eprintln!("Error creating symbol window hashes: {e}");
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                json!({"success": false, "message": e.to_string()}).to_string(),
+                            )
+                        })?;
+                }
+
+                let source = coddog_db::sources::query_by_id(&mut tx, source_id)
+                    .await
+                    .map_err(|e| {
+                        eprintln!("Error querying source by ID: {e}");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            json!({"success": false, "message": e.to_string()}).to_string(),
+                        )
+                    })?
+                    .ok_or_else(|| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            json!({"success": false, "message": "Source not found after creation"})
+                                .to_string(),
+                        )
+                    })?;
+
+                tx.commit().await.map_err(|e| {
+                    eprintln!("Error committing transaction: {e}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        json!({"success": false, "message": e.to_string()}).to_string(),
+                    )
+                })?;
+
+                Ok((StatusCode::OK, json!({"slug": source.slug}).to_string()))
+            }
+        },
     }
 }
 

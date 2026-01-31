@@ -355,6 +355,21 @@ a:hover {
   text-align: center;
 }
 
+.upload-section {
+  background: var(--color-background-elevated);
+  padding: var(--spacing-xl);
+  border-radius: var(--radius-xl);
+  margin: var(--spacing-xl) 0;
+  border: 2px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.upload-section h3 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+  text-align: center;
+}
+
 .search-container {
   max-width: 37.5rem;
   margin: 0 auto;
@@ -581,4 +596,57 @@ a:hover {
   .home-container {
     padding: var(--spacing-sm);
   }
+}
+
+/* ===========================================
+   UPLOAD ZONE STYLES
+=========================================== */
+
+.drop-zone {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  text-align: center;
+  background: var(--color-background-input);
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-zone:hover {
+  border-color: var(--color-border-light);
+  background: var(--color-background-elevated);
+}
+
+.drop-zone.drag-over {
+  border-color: var(--color-primary);
+  background: var(--color-background-elevated);
+  transform: scale(1.02);
+}
+
+.drop-zone.uploading {
+  border-color: var(--color-primary);
+  background: var(--color-background-elevated);
+  cursor: wait;
+}
+
+.drop-zone.error {
+  border-color: var(--color-accent);
+  background: var(--color-background-elevated);
+}
+
+.upload-progress {
+  color: var(--color-primary);
+  font-weight: 500;
+  margin-top: var(--spacing-sm);
+}
+
+.error-message {
+  color: var(--color-accent);
+  font-weight: 500;
+  margin: 0 0 var(--spacing-md) 0;
 }

@@ -1,6 +1,7 @@
 pub mod decompme;
 pub mod objects;
 pub mod projects;
+pub mod sources;
 pub mod symbols;
 
 use anyhow::Result;
@@ -29,6 +30,35 @@ pub struct Version {
 impl Display for Project {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", self.name))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DBSource {
+    pub id: i64,
+    pub slug: String,
+    pub name: String,
+    pub source_link: Option<String>,
+    pub uploaded_by: i64,
+    pub object_id: i64,
+    pub version_id: Option<i64>,
+    pub project_id: i64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SourceMetadata {
+    pub slug: String,
+    pub name: String,
+    pub source_link: Option<String>,
+}
+
+impl SourceMetadata {
+    pub fn from_db_source(source: &DBSource) -> Self {
+        Self {
+            slug: source.slug.clone(),
+            name: source.name.clone(),
+            source_link: source.source_link.clone(),
+        }
     }
 }
 
@@ -229,41 +259,6 @@ pub async fn get_versions_for_project(
 
 pub async fn count_versions(conn: Pool<Postgres>) -> Result<i64> {
     let rec = sqlx::query!("SELECT COUNT(*) as count FROM versions")
-        .fetch_one(&conn)
-        .await?;
-
-    Ok(rec.count.unwrap_or(0))
-}
-
-pub async fn create_source(
-    tx: &mut Transaction<'_, Postgres>,
-    name: &str,
-    source_link: &Option<String>,
-    object_id: i64,
-    version_id: Option<i64>,
-    project_id: i64,
-) -> Result<i64> {
-    match sqlx::query!(
-        "INSERT INTO sources (name, source_link, object_id, version_id, project_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id",
-        name,
-        *source_link,
-        object_id,
-        version_id,
-        project_id
-    )
-    .fetch_one(&mut **tx)
-    .await
-    .map_err(anyhow::Error::from)
-    {
-        Ok(r) => Ok(r.id),
-        Err(e) => Err(e),
-    }
-}
-
-pub async fn count_sources(conn: Pool<Postgres>) -> Result<i64> {
-    let rec = sqlx::query!("SELECT COUNT(*) as count FROM sources")
         .fetch_one(&conn)
         .await?;
 

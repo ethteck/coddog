@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO sources (name, source_link, object_id, version_id, project_id)\n        VALUES ($1, $2, $3, $4, $5)\n        RETURNING id",
+  "query": "INSERT INTO sources (name, source_link, uploaded_by, object_id, version_id, project_id)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        RETURNING id",
   "describe": {
     "columns": [
       {
@@ -15,6 +15,7 @@
         "Text",
         "Int8",
         "Int8",
+        "Int8",
         "Int8"
       ]
     },
@@ -22,5 +23,5 @@
       false
     ]
   },
-  "hash": "1edbdfc3cc61464ac6cbaf4f35a928fb3942093647995ae489fb5aed3102b70d"
+  "hash": "e6f0e2f1fd0f09182935369ca010d92539dd29ef8aadbb984582c11b87e3fe06"
 }
