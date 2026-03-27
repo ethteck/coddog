@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM sources WHERE sources.slug = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "source_link",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "uploaded_by",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "object_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "version_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "project_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "8c6e84dabf816a02ecde1507cbc658e6dea701d028e888672f1109203b4e9641"
+}
