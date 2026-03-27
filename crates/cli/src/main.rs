@@ -11,6 +11,7 @@ use colored::*;
 use decomp_settings::{config::Version, read_config, scan_for_config};
 use glob::glob;
 use inquire::Select;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::{
     fs,
@@ -92,6 +93,10 @@ enum Commands {
         /// Minimum length of functions (in number of instructions) to consider
         #[arg(short, long, default_value = "5")]
         min_len: usize,
+
+        /// Method for sorting output symbols
+        #[arg(long, value_enum)]
+        sort_by: CompareSort,
     },
 
     /// Compare a binary in one project to one or more others, showing the functions in common between them
@@ -104,6 +109,10 @@ enum Commands {
 
         /// Path to other projects' decomp.yaml files
         other_yamls: Vec<PathBuf>,
+
+        /// Method for sorting output symbols
+        #[arg(long, value_enum)]
+        sort_by: CompareSort,
     },
 
     /// Compare one raw binary to one or more projects' binaries, showing the functions in common between them
@@ -124,6 +133,14 @@ enum MatchType {
     Equivalent,
     /// Exact bytes are compared
     Exact,
+}
+
+#[derive(ValueEnum, Clone, Copy, Default, PartialEq, Eq)]
+enum CompareSort {
+    Name,
+    #[default]
+    VramAddr,
+    Similarity,
 }
 
 fn cli_fullname(sym: &Symbol) -> String {
@@ -283,7 +300,30 @@ fn collect_symbols(config: &Version, base_dir: &Path, platform: &str) -> Result<
     Err(anyhow!("No elf or mapfile found"))
 }
 
-fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: usize) {
+fn compare_match_sort(
+    sort_by: CompareSort,
+    a: &(&Symbol, &Symbol, f32),
+    b: &(&Symbol, &Symbol, f32),
+) -> Ordering {
+    match sort_by {
+        CompareSort::Name => a.0.name.cmp(&b.0.name).then(a.1.name.cmp(&b.1.name)),
+        CompareSort::VramAddr => a.0.vram.cmp(&b.0.vram).then(a.1.vram.cmp(&b.1.vram)),
+        CompareSort::Similarity => {
+            b.2.partial_cmp(&a.2)
+                .unwrap_or(Ordering::Equal)
+                .then(a.0.name.cmp(&b.0.name))
+                .then(a.1.name.cmp(&b.1.name))
+        }
+    }
+}
+
+fn do_compare_binaries(
+    bin1: &Binary,
+    bin2: &Binary,
+    threshold: f32,
+    min_len: usize,
+    sort_by: CompareSort,
+) {
     let mut matched_syms: Vec<(&Symbol, &Symbol, f32)> = Vec::new();
 
     bin1.symbols
@@ -309,6 +349,8 @@ fn do_compare_binaries(bin1: &Binary, bin2: &Binary, threshold: f32, min_len: us
                 matched_syms.push((sym, best_sym, score));
             }
         });
+
+    matched_syms.sort_by(|a, b| compare_match_sort(sort_by, a, b));
 
     match matched_syms.len() {
         0 => {
@@ -430,6 +472,7 @@ async fn main() -> Result<()> {
             version2,
             threshold,
             min_len,
+            sort_by,
         } => {
             let config1 = read_config(yaml1.clone())?;
             let config2 = read_config(yaml2.clone())?;
@@ -450,12 +493,13 @@ async fn main() -> Result<()> {
                 symbols: symbols2,
             };
 
-            do_compare_binaries(&bin1, &bin2, *threshold, *min_len);
+            do_compare_binaries(&bin1, &bin2, *threshold, *min_len, *sort_by);
         }
         Commands::CompareN {
             main_yaml,
             main_version,
             other_yamls,
+            sort_by,
         } => {
             let main_config = read_config(main_yaml.clone())?;
             let main_version = main_config.get_version_by_name(main_version).unwrap();
@@ -493,7 +537,7 @@ async fn main() -> Result<()> {
                         other_version.fullname.color(BINARY_COLORS[1])
                     );
 
-                    do_compare_binaries(&main_bin, &other_bin, 0.99, 5);
+                    do_compare_binaries(&main_bin, &other_bin, 0.99, 5, *sort_by);
                     println!();
                 }
             }
