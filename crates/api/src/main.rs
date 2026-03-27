@@ -314,12 +314,10 @@ async fn upload_object(
         .unwrap();
 
     match multipart.next_field().await {
-        Ok(None) => {
-            Err((
-                StatusCode::BAD_REQUEST,
-                json!({"success": false, "message": "No file uploaded"}).to_string(),
-            ))
-        }
+        Ok(None) => Err((
+            StatusCode::BAD_REQUEST,
+            json!({"success": false, "message": "No file uploaded"}).to_string(),
+        )),
         Err(e) => {
             eprintln!("Error processing multipart form: {e}");
             Err((
@@ -328,12 +326,10 @@ async fn upload_object(
             ))
         }
         Ok(field) => match field {
-            None => {
-                Err((
-                    StatusCode::BAD_REQUEST,
-                    json!({"success": false, "message": "No file uploaded"}).to_string(),
-                ))
-            }
+            None => Err((
+                StatusCode::BAD_REQUEST,
+                json!({"success": false, "message": "No file uploaded"}).to_string(),
+            )),
             Some(field) => {
                 let name = field.name().unwrap().to_string();
                 let data = field.bytes().await.unwrap();
