@@ -36,9 +36,7 @@ pub fn get_opcodes_raw(bytes: &[u8], platform: Platform) -> Vec<u16> {
         Arch::Mips => bytes
             .chunks_exact(insn_length)
             .map(|chunk| {
-                let code = platform
-                    .endianness()
-                    .read_u32_bytes(chunk.try_into().unwrap());
+                let code = platform.endianness().read_u32(chunk.try_into().unwrap());
                 let instruction = get_rabbitizer_instruction(code, 0, platform);
                 instruction.opcode() as u16
             })
@@ -47,7 +45,7 @@ pub fn get_opcodes_raw(bytes: &[u8], platform: Platform) -> Vec<u16> {
             .chunks_exact(insn_length)
             .map(|c| {
                 powerpc::Opcode::detect(
-                    platform.endianness().read_u32_bytes(c.try_into().unwrap()),
+                    platform.endianness().read_u32(c.try_into().unwrap()),
                     powerpc::Extensions::gekko_broadway(),
                 ) as u16
             })
@@ -55,9 +53,7 @@ pub fn get_opcodes_raw(bytes: &[u8], platform: Platform) -> Vec<u16> {
         Arch::Thumb => bytes
             .chunks_exact(insn_length)
             .map(|chunk| {
-                let code = platform
-                    .endianness()
-                    .read_u16_bytes(chunk.try_into().unwrap());
+                let code = platform.endianness().read_u16(chunk.try_into().unwrap());
 
                 let (ins, _) = parse_thumb(code.into(), 0, &unarm::Options::default());
                 ins.discriminant()
@@ -75,7 +71,7 @@ fn decode_instruction(
         Arch::Mips => {
             let code = platform
                 .endianness()
-                .read_u32_bytes(insn_bytes.try_into().unwrap());
+                .read_u32(insn_bytes.try_into().unwrap());
 
             Ok(Insn::Mips(get_rabbitizer_instruction(
                 code,
@@ -86,15 +82,14 @@ fn decode_instruction(
         Arch::Ppc => Ok(Insn::Ppc(powerpc::Ins::new(
             platform
                 .endianness()
-                .read_u32_bytes(insn_bytes.try_into().unwrap()),
+                .read_u32(insn_bytes.try_into().unwrap()),
             powerpc::Extensions::gekko_broadway(),
         ))),
         Arch::Thumb => match insn_ref.size {
             2 => {
                 let ins = platform
                     .endianness()
-                    .read_u16_bytes(insn_bytes.try_into().unwrap())
-                    as u32;
+                    .read_u16(insn_bytes.try_into().unwrap()) as u32;
                 let (i, _) = parse_thumb(
                     ins,
                     0,
@@ -108,7 +103,7 @@ fn decode_instruction(
             4 => {
                 let ins = platform
                     .endianness()
-                    .read_u32_bytes(insn_bytes.try_into().unwrap());
+                    .read_u32(insn_bytes.try_into().unwrap());
                 let (i, _) = parse_thumb(
                     ins,
                     0,

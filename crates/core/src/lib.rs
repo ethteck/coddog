@@ -6,7 +6,7 @@ use editdistancek::edit_distance_bounded;
 use objdiff_core::diff::display::DiffText;
 use objdiff_core::diff::{
     ArmArchVersion, ArmR9Usage, Demangler, DiffObjConfig, DiffSide, FunctionRelocDiffs, MipsAbi,
-    MipsInstrCategory, ShowSymbolSizes, X86Formatter,
+    MipsInstrCategory, PreferredStringEncoding, ShowSymbolSizes, X86Formatter,
 };
 use object::Endianness;
 use serde::Serialize;
@@ -210,6 +210,7 @@ const OBJDIFF_CONFIG: DiffObjConfig = DiffObjConfig {
     mips_register_prefix: false,
     ppc_calculate_pool_relocations: false,
     x86_formatter: X86Formatter::Intel,
+    preferred_string_encoding: PreferredStringEncoding::Auto,
 };
 
 pub fn get_hashes<T: Clone + Default + Hash>(data: &[T], window_size: usize) -> Vec<u64> {
