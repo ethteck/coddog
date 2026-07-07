@@ -30,7 +30,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
-    "@rsbuild/core": "^2.1.4",
+    "@rsbuild/core": "^2.1.5",
     "@rsbuild/plugin-react": "^2.1.0",
     "@rsbuild/plugin-svgr": "^2.0.5",
     "@tanstack/eslint-plugin-query": "^5.101.2",
