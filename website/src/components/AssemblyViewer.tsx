@@ -251,7 +251,7 @@ export const AssemblyViewer: React.FC<AssemblyViewerProps> = ({
               <div
                 role="button"
                 tabIndex={index}
-                key={`${index}${line.opcode}`}
+                key={`${index.toString()}-${line.opcode}`}
                 onClick={() => handleRowClick(index)}
                 className={`${styles.assemblyLine} ${isRowInRange(index) ? styles.selected : ''}`}
               >

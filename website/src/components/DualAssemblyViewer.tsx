@@ -221,7 +221,7 @@ export const DualAssemblyViewer: React.FC<DualAssemblyViewerProps> = ({
             : '';
 
           return (
-            <span key={`${arg}-${asm.opcode}-${index}`}>
+            <span key={`${arg}-${asm.opcode}-${index.toString()}`}>
               <span className={`${styles.argument} ${argClass}`}>{arg}</span>
               {!isLastArg && <span>, </span>}
             </span>
