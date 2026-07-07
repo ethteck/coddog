@@ -56,6 +56,7 @@ async fn main() {
                 .delete(delete_project),
         )
         .route("/sources/{slug}", get(query_sources_by_slug))
+        .route("/sources/{slug}/symbols", get(query_symbols_by_source_slug))
         .route("/symbols", post(query_symbols_by_name))
         .route("/symbols/{slug}", get(query_symbols_by_slug))
         .route("/symbols/{slug}/asm", get(get_symbol_asm))
@@ -304,6 +305,27 @@ async fn query_sources_by_slug(
     ))
 }
 
+async fn query_symbols_by_source_slug(
+    State(pg_pool): State<PgPool>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> Result<(StatusCode, String), (StatusCode, String)> {
+    let source = get_source_for_slug(pg_pool.clone(), &slug).await?;
+
+    let syms = coddog_db::symbols::query_by_source_id(pg_pool.clone(), &source.id)
+        .await
+        .map_err(|e| {
+            eprintln!("Error retrieving symbols for source of slug {slug}: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({"success": false, "message": e.to_string()}).to_string(),
+            )
+        })?;
+
+    let syms: Vec<SymbolMetadata> = syms.iter().map(SymbolMetadata::from_db_symbol).collect();
+
+    Ok((StatusCode::OK, json!(syms).to_string()))
+}
+
 async fn upload_object(
     State(pg_pool): State<PgPool>,
     mut multipart: Multipart,
@@ -331,7 +353,7 @@ async fn upload_object(
                 json!({"success": false, "message": "No file uploaded"}).to_string(),
             )),
             Some(field) => {
-                let name = field.name().unwrap().to_string();
+                let name = field.file_name().unwrap().to_string();
                 let data = field.bytes().await.unwrap();
 
                 println!("Length of `{}` is {} bytes", name, data.len());

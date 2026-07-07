@@ -1,4 +1,4 @@
-import { Slider as BaseSlider } from '@base-ui-components/react/slider';
+import { Slider } from '@base-ui/react/slider';
 import React from 'react';
 import styles from './Slider.module.css';
 
@@ -9,7 +9,7 @@ interface SliderProps {
   onChange?: (value: number) => void;
 }
 
-export default function Slider({
+export default function CDSlider({
   min,
   max,
   defaultValue,
@@ -18,7 +18,7 @@ export default function Slider({
   const [value, setValue] = React.useState(defaultValue);
 
   return (
-    <BaseSlider.Root
+    <Slider.Root
       min={min}
       max={max}
       value={value}
@@ -26,13 +26,13 @@ export default function Slider({
       onValueCommitted={onChange}
       className={styles.Root}
     >
-      <BaseSlider.Control className={styles.Control}>
-        <BaseSlider.Track className={styles.Track}>
-          <BaseSlider.Indicator className={styles.Indicator} />
-          <BaseSlider.Thumb className={styles.Thumb} />
-        </BaseSlider.Track>
-      </BaseSlider.Control>
-      <BaseSlider.Value />
-    </BaseSlider.Root>
+      <Slider.Control className={styles.Control}>
+        <Slider.Track className={styles.Track}>
+          <Slider.Indicator className={styles.Indicator} />
+          <Slider.Thumb className={styles.Thumb} />
+        </Slider.Track>
+      </Slider.Control>
+      <Slider.Value />
+    </Slider.Root>
   );
 }

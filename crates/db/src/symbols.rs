@@ -18,11 +18,6 @@ pub struct QuerySymbolsByNameRequest {
     pub name: String,
 }
 
-#[derive(Deserialize)]
-pub struct QuerySymbolsBySlugRequest {
-    pub slug: String,
-}
-
 pub async fn create_many(
     tx: &mut Transaction<'_, Postgres>,
     source_id: i64,
@@ -275,6 +270,33 @@ pub async fn query_by_exact_hash(
     .await?;
 
     Ok(syms)
+}
+pub async fn query_by_source_id(
+    conn: Pool<Postgres>,
+    query: &i64,
+) -> anyhow::Result<Vec<DBSymbol>> {
+    let sym = sqlx::query_as!(
+        DBSymbol,
+        "
+    SELECT symbols.id, symbols.slug, symbols.len, symbols.name, symbols.is_decompiled,
+           symbols.symbol_idx,
+           symbols.opcode_hash, symbols.equiv_hash, symbols.exact_hash, symbols.source_id,
+            sources.name AS source_name, objects.local_path AS object_path, symbols.symbol_idx AS object_symbol_idx,
+           versions.id AS \"version_id?\", versions.name AS \"version_name?\", versions.platform,
+           projects.name AS project_name, projects.id AS project_id,
+           projects.repo AS project_repo
+    FROM symbols
+    INNER JOIN sources ON sources.id = symbols.source_id
+    INNER JOIN objects ON objects.id = sources.object_id
+    LEFT JOIN versions ON versions.id = sources.version_id
+    INNER JOIN projects on sources.project_id = projects.id
+    WHERE symbols.source_id = $1",
+        query
+    )
+        .fetch_all(&conn)
+        .await?;
+
+    Ok(sym)
 }
 
 pub async fn count(conn: Pool<Postgres>) -> anyhow::Result<i64> {

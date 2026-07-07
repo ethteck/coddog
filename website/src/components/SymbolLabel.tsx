@@ -48,14 +48,14 @@ export function SymbolLabel({
 
   const content = isDecompmeScratch(symbol) ? (
     <>
+      <b>{symbol.name}</b> - <DecompmeLogo />/{symbol.source_name}{' '}
       {platformLogo && <>{platformLogo} </>}
-      <b>{symbol.name}</b> - <DecompmeLogo />/{symbol.source_name}
     </>
   ) : (
     <>
-      {platformLogo && <>{platformLogo} </>}
       <b>{symbol.name}</b> - {symbol.project_name}
-      {symbol.version_name ? ` (${symbol.version_name})` : ''}
+      {symbol.version_name ? ` (${symbol.version_name})` : ''}{' '}
+      {platformLogo && <>{platformLogo} </>}
     </>
   );
 

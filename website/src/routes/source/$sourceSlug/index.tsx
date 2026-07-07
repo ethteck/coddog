@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { fetchSourceMetadata } from '../../../api/sources';
+import { fetchSymbolsBySourceSlug } from '../../../api/symbols.tsx';
+import { SymbolLabel } from '../../../components/SymbolLabel.tsx';
 
 export const Route = createFileRoute('/source/$sourceSlug/')({
   component: SymbolInfo,
@@ -19,6 +21,16 @@ function SymbolInfo() {
     queryFn: () => fetchSourceMetadata(sourceSlug),
   });
 
+  const {
+    data: querySymbols,
+    isLoading: isLoadingSymbols,
+    isError: isErrorSymbols,
+    error: errorSymbols,
+  } = useQuery({
+    queryKey: ['symbols', sourceSlug],
+    queryFn: () => fetchSymbolsBySourceSlug(sourceSlug),
+  });
+
   if (isLoadingMetadata)
     return <div className="loading">Loading query metadata...</div>;
   if (isErrorMetadata)
@@ -30,7 +42,17 @@ function SymbolInfo() {
     <>
       <h2>{querySource.name}</h2>
 
-      <p>Source Slug: {querySource.slug}</p>
+      {isLoadingSymbols && <div className="loading">Loading...</div>}
+      {isErrorSymbols && (
+        <div className="error">{(errorSymbols as Error).message}</div>
+      )}
+      <ul>
+        {querySymbols?.map((sym) => (
+          <li key={sym.slug}>
+            <SymbolLabel symbol={sym} />
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

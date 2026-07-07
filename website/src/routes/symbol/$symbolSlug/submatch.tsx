@@ -8,7 +8,7 @@ import {
   fetchSymbolSubmatches,
 } from '../../../api/symbols';
 import { AssemblyViewer } from '../../../components/AssemblyViewer';
-import Slider from '../../../components/Slider';
+import CDSlider from '../../../components/Slider';
 import { SymbolLabel } from '../../../components/SymbolLabel';
 import { SymbolSubmatches } from '../../../components/SymbolSubmatches';
 import styles from './submatch.module.css';
@@ -189,7 +189,7 @@ function SymbolSubmatch() {
         <div className={styles.controlsRow}>
           <div className={styles.sliderGroup}>
             <span className={styles.sliderLabel}>Minimum match length:</span>
-            <Slider
+            <CDSlider
               min={MIN_WINDOW_SIZE}
               max={50}
               defaultValue={search.windowSize ?? DEFAULT_WINDOW_SIZE}

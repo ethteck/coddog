@@ -6,102 +6,202 @@
       {
         "ordinal": 0,
         "name": "project_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "sources",
+            "name": "project_id"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "project_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "source_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "source_id"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "source_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "sources",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "symbol_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "windows",
+            "name": "symbol_id"
+          }
+        }
       },
       {
         "ordinal": 5,
         "name": "symbol_name",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 6,
         "name": "is_decompiled",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "is_decompiled"
+          }
+        }
       },
       {
         "ordinal": 7,
         "name": "symbol_slug",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "slug"
+          }
+        }
       },
       {
         "ordinal": 8,
         "name": "symbol_len",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "len"
+          }
+        }
       },
       {
         "ordinal": 9,
         "name": "object_symbol_idx",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "symbols",
+            "name": "symbol_idx"
+          }
+        }
       },
       {
         "ordinal": 10,
         "name": "version_id?",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "versions",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 11,
         "name": "version_name?",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "versions",
+            "name": "name"
+          }
+        }
       },
       {
         "ordinal": 12,
         "name": "platform",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "versions",
+            "name": "platform"
+          }
+        }
       },
       {
         "ordinal": 13,
         "name": "project_repo",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "projects",
+            "name": "repo"
+          }
+        }
       },
       {
         "ordinal": 14,
         "name": "object_id",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "objects",
+            "name": "id"
+          }
+        }
       },
       {
         "ordinal": 15,
         "name": "object_path",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "objects",
+            "name": "local_path"
+          }
+        }
       },
       {
         "ordinal": 16,
         "name": "start_query_pos",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": "Expression"
       },
       {
         "ordinal": 17,
         "name": "start_match_pos",
-        "type_info": "Int4"
+        "type_info": "Int4",
+        "origin": "Expression"
       },
       {
         "ordinal": 18,
         "name": "length",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": "Expression"
       },
       {
         "ordinal": 19,
         "name": "total_count",
-        "type_info": "Int8"
+        "type_info": "Int8",
+        "origin": "Expression"
       }
     ],
     "parameters": {
